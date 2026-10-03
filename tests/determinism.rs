@@ -91,6 +91,117 @@ fn archive_entries_have_normalized_order_and_metadata() {
 }
 
 #[test]
+fn selected_files_and_directories_are_archived_with_required_parents() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::create_dir_all(source.join("assets/icons")).unwrap();
+    fs::write(source.join("README.md"), b"readme").unwrap();
+    fs::write(source.join("src/main.rs"), b"main").unwrap();
+    fs::write(source.join("src/other.rs"), b"other").unwrap();
+    fs::write(source.join("assets/icons/app.png"), b"image").unwrap();
+    let output = directory.path().join("selected.tar.gz");
+    let selected = vec!["README.md".into(), "src/main.rs".into(), "assets".into()];
+
+    let stats = dtar::compress_directory_with_entries(&source, &output, false, &selected).unwrap();
+
+    assert_eq!(stats.files, 3);
+    assert_eq!(stats.directories, 3);
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        [
+            "README.md",
+            "assets",
+            "assets/icons",
+            "assets/icons/app.png",
+            "src",
+            "src/main.rs"
+        ]
+    );
+}
+
+#[test]
+fn exclusions_filter_selected_directories() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("data")).unwrap();
+    fs::write(source.join("data/keep.txt"), b"keep").unwrap();
+    fs::write(source.join("data/skip.tmp"), b"skip").unwrap();
+    let output = directory.path().join("selected.tar.gz");
+    let selected = vec!["data".into()];
+    let excludes = vec!["*.tmp".to_owned()];
+
+    let stats = dtar::compress_directory_with_entries_and_excludes(
+        &source, &output, false, &selected, &excludes,
+    )
+    .unwrap();
+
+    assert_eq!(stats.files, 1);
+    assert_eq!(stats.directories, 1);
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["data", "data/keep.txt"]);
+}
+
+#[test]
+fn invalid_entry_selections_are_rejected() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("file.txt"), b"content").unwrap();
+
+    let outside = vec!["../outside.txt".into()];
+    let error = dtar::plan_archive_with_entries(
+        &source,
+        directory.path().join("outside.tar.gz"),
+        false,
+        &outside,
+        &[],
+    )
+    .err()
+    .expect("entry outside source was accepted");
+    assert!(error.to_string().contains("source-relative"));
+
+    let missing = vec!["missing.txt".into()];
+    let error = dtar::plan_archive_with_entries(
+        &source,
+        directory.path().join("missing.tar.gz"),
+        false,
+        &missing,
+        &[],
+    )
+    .err()
+    .expect("missing entry was accepted");
+    assert!(error.to_string().contains("cannot inspect selected entry"));
+}
+
+#[test]
 fn existing_output_is_preserved_without_force() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");
@@ -233,6 +344,76 @@ fn dry_run_prints_excluded_archive_tree_without_creating_output() {
         String::from_utf8_lossy(&overwrite_preview.stderr)
     );
     assert_eq!(fs::read(output_path).unwrap(), b"existing archive");
+}
+
+#[test]
+fn cli_selection_applies_to_dry_run_and_compression() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::create_dir_all(source.join("assets")).unwrap();
+    fs::write(source.join("README.md"), b"readme").unwrap();
+    fs::write(source.join("src/main.rs"), b"main").unwrap();
+    fs::write(source.join("src/other.rs"), b"other").unwrap();
+    fs::write(source.join("assets/logo.png"), b"logo").unwrap();
+    let output_path = directory.path().join("selected.tar.gz");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--output"])
+        .arg(&output_path)
+        .arg(&source)
+        .args(["README.md", "src/main.rs", "assets"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("README.md"));
+    assert!(stdout.contains("`-- src/\n    `-- main.rs"));
+    assert!(stdout.contains("logo.png"));
+    assert!(!stdout.contains("src/other.rs"));
+    assert!(!output_path.exists());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--quiet", "--output"])
+        .arg(&output_path)
+        .arg(&source)
+        .args(["README.md", "src/main.rs", "assets"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let decoder = GzDecoder::new(File::open(output_path).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        [
+            "README.md",
+            "assets",
+            "assets/logo.png",
+            "src",
+            "src/main.rs"
+        ]
+    );
 }
 
 #[test]

@@ -70,7 +70,19 @@ consistent point-in-time copy.
 
 ## Command line
 
-The `dtar` command must have the flags an option expected for a compression command, as well as a help and version flags. Also, it should be user-friendly: gracefully warn on errors, use a progress bar for the compression task, announce the archive checksum on completion.
+The command syntax is `dtar [OPTIONS] <SOURCE> [ENTRY]...`. `<SOURCE>` is the
+source directory. Optional positional `ENTRY` paths are source-relative paths
+to regular files or directories. With no `ENTRY` paths, archive the entire
+source as before. Include a selected file, include a selected directory and
+its descendants recursively, and include parent directories needed to preserve
+selected paths. Reject absolute paths, paths containing `..`, missing paths,
+symbolic links, and unsupported filesystem entries. Normalize selected archive
+paths and sort all resulting entries deterministically. `--exclude` continues
+to apply to the selected plan; excluded directories and descendants remain
+omitted.
+
+The CLI must provide help and version flags, a progress bar for compression,
+and an archive checksum on successful completion.
 
 ### Completion Statistics
 
@@ -114,8 +126,9 @@ exclusions. Invalid patterns must produce an error rather than being ignored.
 
 The `--dry-run` option must validate the source, destination, and exclusions,
 then print a tree of the entries that would be archived in deterministic order.
-It must not create, truncate, or replace the output archive. Exclusions must
-apply to the preview. Quiet mode suppresses the tree.
+It must validate and apply positional entry selections as well. It must not
+create, truncate, or replace the output archive. Exclusions must apply to the
+preview. Quiet mode suppresses the tree.
 
 ## Verification Criteria (Definition of Done)
 
@@ -126,3 +139,5 @@ The agent must provide a verification test (such as a local integration test) de
    create or replace the output file.
 4. A failure after writing has begun does not publish a partial archive, and
    preserves an existing destination even when replacement was requested.
+5. Positional selections include the requested files, recurse through selected
+   directories, and omit unselected entries in both compression and dry-run.

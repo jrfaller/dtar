@@ -137,13 +137,74 @@ pub fn compress_directory_with_excludes_and_progress<F>(
     output: impl AsRef<Path>,
     overwrite: bool,
     exclude_patterns: &[String],
+    progress: F,
+) -> Result<ArchiveStats>
+where
+    F: FnMut(u64, u64),
+{
+    compress_directory_with_entries_and_excludes_and_progress(
+        source,
+        output,
+        overwrite,
+        &[],
+        exclude_patterns,
+        progress,
+    )
+}
+
+/// Compresses selected source-relative files and directories into a
+/// deterministic tar.gz archive. Selected directories are included
+/// recursively, and their parent directories are included as needed.
+pub fn compress_directory_with_entries(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    entry_paths: &[PathBuf],
+) -> Result<ArchiveStats> {
+    compress_directory_with_entries_and_excludes_and_progress(
+        source,
+        output,
+        overwrite,
+        entry_paths,
+        &[],
+        |_, _| {},
+    )
+}
+
+/// Compresses selected source-relative files and directories while excluding
+/// entries matching any source-relative glob pattern.
+pub fn compress_directory_with_entries_and_excludes(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    entry_paths: &[PathBuf],
+    exclude_patterns: &[String],
+) -> Result<ArchiveStats> {
+    compress_directory_with_entries_and_excludes_and_progress(
+        source,
+        output,
+        overwrite,
+        entry_paths,
+        exclude_patterns,
+        |_, _| {},
+    )
+}
+
+/// Compresses selected source-relative entries with exclusions and progress
+/// reporting. Exclusions take precedence over selected entries.
+pub fn compress_directory_with_entries_and_excludes_and_progress<F>(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    entry_paths: &[PathBuf],
+    exclude_patterns: &[String],
     mut progress: F,
 ) -> Result<ArchiveStats>
 where
     F: FnMut(u64, u64),
 {
     let started = Instant::now();
-    let plan = plan_archive(source, output, overwrite, exclude_patterns)?;
+    let plan = plan_archive_with_entries(source, output, overwrite, entry_paths, exclude_patterns)?;
     let ArchivePlan { output, entries } = plan;
     let total = entries.len() as u64;
     let files = entries
@@ -290,6 +351,19 @@ pub fn plan_archive(
     overwrite: bool,
     exclude_patterns: &[String],
 ) -> Result<ArchivePlan> {
+    plan_archive_with_entries(source, output, overwrite, &[], exclude_patterns)
+}
+
+/// Plans an archive containing the requested source-relative entries without
+/// creating or modifying the destination file. Selected directories are
+/// included recursively, with necessary parent directories.
+pub fn plan_archive_with_entries(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    entry_paths: &[PathBuf],
+    exclude_patterns: &[String],
+) -> Result<ArchivePlan> {
     let source = canonicalize_source(source.as_ref())?;
     let output = resolve_output_path(output.as_ref())?;
     if output.starts_with(&source) {
@@ -308,8 +382,10 @@ pub fn plan_archive(
         );
     }
 
+    let entry_paths = normalize_entry_paths(entry_paths)?;
+    validate_entry_paths(&source, &entry_paths)?;
     let excludes = build_excludes(exclude_patterns)?;
-    let mut entries = collect_entries(&source, &excludes)?;
+    let mut entries = collect_entries(&source, &excludes, &entry_paths)?;
     entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
 
     Ok(ArchivePlan { output, entries })
@@ -324,7 +400,11 @@ fn canonicalize_source(source: &Path) -> Result<PathBuf> {
     Ok(source)
 }
 
-fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
+fn collect_entries(
+    root: &Path,
+    excludes: &GlobSet,
+    selected_paths: &[PathBuf],
+) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
 
@@ -337,16 +417,23 @@ fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
         children.sort();
 
         for path in children {
-            let metadata = fs::symlink_metadata(&path)
-                .with_context(|| format!("cannot inspect {}", path.display()))?;
             let relative = path
                 .strip_prefix(root)
                 .with_context(|| format!("cannot make {} relative to source", path.display()))?;
+            if !selected_paths.is_empty()
+                && !selected_paths.iter().any(|selected| {
+                    relative.starts_with(selected) || selected.starts_with(relative)
+                })
+            {
+                continue;
+            }
             let archive_path = normalize_path(relative)?;
 
             if excludes.is_match(&archive_path) {
                 continue;
             }
+            let metadata = fs::symlink_metadata(&path)
+                .with_context(|| format!("cannot inspect {}", path.display()))?;
             if metadata.file_type().is_symlink() {
                 bail!("symbolic links are not supported: {}", path.display());
             }
@@ -372,6 +459,63 @@ fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
     }
 
     Ok(entries)
+}
+
+fn normalize_entry_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    paths
+        .iter()
+        .map(|path| {
+            let mut normalized = PathBuf::new();
+            for component in path.components() {
+                let part = match component {
+                    Component::CurDir => continue,
+                    Component::Normal(part) => part,
+                    _ => {
+                        bail!(
+                            "entry paths must be source-relative and must not contain '..': {}",
+                            path.display()
+                        );
+                    }
+                };
+                part.to_str().with_context(|| {
+                    format!("entry path is not valid UTF-8: {}", path.display())
+                })?;
+                normalized.push(part);
+            }
+            if normalized.as_os_str().is_empty() {
+                bail!(
+                    "entry path must name a file or directory: {}",
+                    path.display()
+                );
+            }
+            Ok(normalized)
+        })
+        .collect()
+}
+
+fn validate_entry_paths(root: &Path, paths: &[PathBuf]) -> Result<()> {
+    for relative in paths {
+        let mut current = root.to_path_buf();
+        let mut components = relative.components().peekable();
+        while let Some(Component::Normal(component)) = components.next() {
+            current.push(component);
+            let metadata = fs::symlink_metadata(&current)
+                .with_context(|| format!("cannot inspect selected entry {}", current.display()))?;
+            if metadata.file_type().is_symlink() {
+                bail!("symbolic links are not supported: {}", current.display());
+            }
+            if components.peek().is_some() && !metadata.is_dir() {
+                bail!(
+                    "selected entry parent is not a directory: {}",
+                    current.display()
+                );
+            }
+            if components.peek().is_none() && !metadata.is_dir() && !metadata.is_file() {
+                bail!("unsupported filesystem entry: {}", current.display());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn normalize_path(path: &Path) -> Result<String> {

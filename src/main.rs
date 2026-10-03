@@ -19,6 +19,10 @@ struct Args {
     /// Directory to archive
     source: PathBuf,
 
+    /// Source-relative files or directories to archive (directories recursively)
+    #[arg(value_name = "ENTRY", num_args = 0..)]
+    entries: Vec<PathBuf>,
+
     /// Output archive path (defaults to <source-name>.tar.gz)
     #[arg(short, long)]
     output: Option<PathBuf>,
@@ -60,7 +64,13 @@ fn run() -> anyhow::Result<()> {
         .unwrap_or_else(|| default_output_path(&args.source));
 
     if args.dry_run {
-        let plan = dtar::plan_archive(&args.source, &output, args.force, &args.exclude)?;
+        let plan = dtar::plan_archive_with_entries(
+            &args.source,
+            &output,
+            args.force,
+            &args.entries,
+            &args.exclude,
+        )?;
         if !args.quiet {
             println!("Dry run: no archive will be created.");
             println!("Output: {}", plan.output_path().display());
@@ -97,10 +107,11 @@ fn run() -> anyhow::Result<()> {
         bar
     };
 
-    let stats = dtar::compress_directory_with_excludes_and_progress(
+    let stats = dtar::compress_directory_with_entries_and_excludes_and_progress(
         &args.source,
         &output,
         args.force,
+        &args.entries,
         &args.exclude,
         |completed, total| {
             progress.set_length(total);

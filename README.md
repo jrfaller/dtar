@@ -35,7 +35,7 @@ must be valid UTF-8. Output archives must be outside the source directory.
 ## Usage
 
 ```text
-dtar [OPTIONS] <SOURCE>
+dtar [OPTIONS] <SOURCE> [ENTRY]...
 ```
 
 `<SOURCE>` is the directory to archive. The output defaults to a sibling named
@@ -50,6 +50,20 @@ should be archived. The source root itself is not added as an entry.
 ```sh
 dtar ./my-project
 ```
+
+### `[ENTRY]...`
+
+Optional positional paths relative to `<SOURCE>`. If omitted, the whole source
+directory is archived. Each listed file is included; each listed directory is
+included recursively. Parent directories needed to preserve selected paths are
+included automatically. Paths must exist within the source directory and must
+not be absolute or contain `..`.
+
+```sh
+dtar ./my-project src/main.rs Cargo.toml README.md assets
+```
+
+This archives the three files and the `assets` directory recursively.
 
 ### `-o, --output <OUTPUT>`
 
@@ -87,18 +101,22 @@ dtar ./my-project \
 
 ### `--dry-run`
 
-Validate the source, output path, and exclusions, then print a tree of entries
-that would be archived without creating or replacing the output. Exclusions are
-applied to the preview. Destination checks still apply; use `--force` to preview
-an output path that already exists. The existing file will remain untouched. If
-combined with `--quiet`, the tree is hidden.
+Validate the source, output path, positional entries, and exclusions, then
+print a tree of entries that would be archived without creating or replacing
+the output. Selections and exclusions are applied to the preview. Destination
+checks still apply; use `--force` to preview an output path that already exists.
+The existing file will remain untouched. If combined with `--quiet`, the tree
+is hidden.
 
 ```sh
-dtar ./my-project \
+dtar \
+  --dry-run \
   --output ./dist/my-project.tar.gz \
   --exclude .git \
   --exclude '*.tmp' \
-  --dry-run
+  ./my-project \
+  src/main.rs \
+  assets
 ```
 
 ### `-q, --quiet`
