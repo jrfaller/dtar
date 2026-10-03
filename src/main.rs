@@ -16,14 +16,11 @@ use indicatif::{ProgressBar, ProgressStyle};
     about = "Create deterministic .tar.gz archives"
 )]
 struct Args {
-    /// Directory to archive
-    source: PathBuf,
+    /// One or more files or directories to archive
+    #[arg(value_name = "SOURCE", num_args = 1.., required = true)]
+    sources: Vec<PathBuf>,
 
-    /// Source-relative files or directories to archive (directories recursively)
-    #[arg(value_name = "ENTRY", num_args = 0..)]
-    entries: Vec<PathBuf>,
-
-    /// Output archive path (defaults to <source-name>.tar.gz)
+    /// Output path (default for one source; required for multiple)
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -31,7 +28,7 @@ struct Args {
     #[arg(short, long)]
     force: bool,
 
-    /// Exclude source-relative paths matching this glob (repeatable)
+    /// Exclude archive-relative paths matching this glob (repeatable)
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
 
@@ -59,26 +56,26 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
+    if args.sources.len() > 1 && args.output.is_none() {
+        anyhow::bail!("--output is required when multiple source paths are provided");
+    }
     let output = args
         .output
-        .unwrap_or_else(|| default_output_path(&args.source));
+        .unwrap_or_else(|| default_output_path(&args.sources[0]));
 
     if args.dry_run {
-        let plan = dtar::plan_archive_with_entries(
-            &args.source,
-            &output,
-            args.force,
-            &args.entries,
-            &args.exclude,
-        )?;
+        let plan = dtar::plan_sources(&args.sources, &output, args.force, &args.exclude)?;
         if !args.quiet {
             println!("Dry run: no archive will be created.");
             println!("Output: {}", plan.output_path().display());
-            let root_name = args
-                .source
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| args.source.display().to_string());
+            let root_name = if args.sources.len() == 1 && args.sources[0].is_dir() {
+                args.sources[0]
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Archive".to_owned())
+            } else {
+                "Archive".to_owned()
+            };
             println!("{root_name}/");
             let mut tree = TreeNode::default();
             for entry in plan.entries() {
@@ -107,11 +104,10 @@ fn run() -> anyhow::Result<()> {
         bar
     };
 
-    let stats = dtar::compress_directory_with_entries_and_excludes_and_progress(
-        &args.source,
+    let stats = dtar::compress_sources_with_excludes_and_progress(
+        &args.sources,
         &output,
         args.force,
-        &args.entries,
         &args.exclude,
         |completed, total| {
             progress.set_length(total);

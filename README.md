@@ -1,17 +1,17 @@
 # dtar
 
-`dtar` creates reproducible `.tar.gz` archives from directories. File and
-directory entries are sorted by normalized relative path; tar timestamps,
-owners, names, and permissions are fixed, and the gzip timestamp and operating
-system fields are normalized. Compression uses the Rust DEFLATE backend and a
-fixed best-compression profile.
+`dtar` creates reproducible `.tar.gz` archives from one or more files and
+directories. File and directory entries are sorted by normalized archive path;
+tar timestamps, owners, names, and permissions are fixed, and the gzip timestamp
+and operating system fields are normalized. Compression uses the Rust DEFLATE
+backend and a fixed best-compression profile.
 
 ## Why deterministic archives?
 
 Ordinary archive tools can produce different bytes for the same file contents
 because timestamps, ownership, permissions, or filesystem traversal order
 changed. `dtar` normalizes these details so that archiving the same supported
-directory contents with the same tool version and options produces the same
+input paths and contents with the same tool version and options produces the same
 archive bytes and SHA-256 checksum.
 
 This is useful for:
@@ -30,46 +30,46 @@ This is useful for:
 
 The tool archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
-must be valid UTF-8. Output archives must be outside the source directory.
+must be valid UTF-8. The output archive must be outside all input directories
+and must not replace an input file.
 
 ## Usage
 
 ```text
-dtar [OPTIONS] <SOURCE> [ENTRY]...
+dtar [OPTIONS] <SOURCE>...
 ```
 
-`<SOURCE>` is the directory to archive. The output defaults to a sibling named
+Provide one or more input paths, each of which can be a regular file or
+directory. For one input, the output defaults to a sibling named
 `<source-name>.tar.gz`; for example, archiving `./my-project` creates
-`./my-project.tar.gz`.
+`./my-project.tar.gz`. With multiple inputs, `--output` is required.
 
-### `<SOURCE>`
+### `<SOURCE>...`
 
-Required positional argument: the directory whose files and subdirectories
-should be archived. The source root itself is not added as an entry.
+Required positional argument: one or more files or directories to archive. With
+one directory, its contents are archived without the source directory itself,
+preserving the previous layout. A single file is stored under its basename.
+With multiple inputs, each is stored under its basename; directories include
+their basename and all descendants. Inputs with colliding archive paths are
+rejected, and `--output` must be specified. Exclude patterns match the
+resulting archive-relative paths.
 
 ```sh
 dtar ./my-project
 ```
 
-### `[ENTRY]...`
-
-Optional positional paths relative to `<SOURCE>`. If omitted, the whole source
-directory is archived. Each listed file is included; each listed directory is
-included recursively. Parent directories needed to preserve selected paths are
-included automatically. Paths must exist within the source directory and must
-not be absolute or contain `..`.
-
 ```sh
-dtar ./my-project src/main.rs Cargo.toml README.md assets
+dtar --output ./bundle.tar.gz ./my-project/src/main.rs ./LICENSE ./assets
 ```
 
-This archives the three files and the `assets` directory recursively.
+This archives `main.rs`, `LICENSE`, and the `assets` directory recursively.
 
 ### `-o, --output <OUTPUT>`
 
-Choose the output archive path instead of the default sibling path. The output
-must be outside the source directory, and its parent directory must already
-exist. Existing output files are not replaced unless `--force` is also given.
+Choose the output archive path. This option is required when providing multiple
+inputs. The output must be outside every input directory and cannot replace a
+file input; its parent directory must already exist. Existing output files are
+not replaced unless `--force` is also given.
 
 ```sh
 dtar ./my-project --output ./dist/my-project.tar.gz
@@ -87,7 +87,7 @@ dtar ./my-project --output ./dist/my-project.tar.gz --force
 
 ### `-e, --exclude <PATTERN>`
 
-Exclude paths matching a source-relative glob. This option can be repeated.
+Exclude archive-relative paths matching a glob. This option can be repeated.
 Patterns use `/` separators, and `*` can match across directory boundaries.
 When a directory matches, it and its entire subtree are omitted. Nothing is
 excluded by default.
@@ -101,12 +101,11 @@ dtar ./my-project \
 
 ### `--dry-run`
 
-Validate the source, output path, positional entries, and exclusions, then
-print a tree of entries that would be archived without creating or replacing
-the output. Selections and exclusions are applied to the preview. Destination
-checks still apply; use `--force` to preview an output path that already exists.
-The existing file will remain untouched. If combined with `--quiet`, the tree
-is hidden.
+Validate all source paths, the output path, and exclusions, then print a tree of
+entries that would be archived without creating or replacing the output. All
+sources and exclusions are applied to the preview. Destination checks still
+apply; use `--force` to preview an output path that already exists. The existing
+file will remain untouched. If combined with `--quiet`, the tree is hidden.
 
 ```sh
 dtar \
@@ -115,8 +114,7 @@ dtar \
   --exclude .git \
   --exclude '*.tmp' \
   ./my-project \
-  src/main.rs \
-  assets
+  ./assets
 ```
 
 ### `-q, --quiet`

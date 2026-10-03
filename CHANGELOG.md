@@ -6,7 +6,8 @@
 
 - Define CLI failure reporting and completion-statistic semantics in the spec.
 - Document behavior when source files change during compression.
-- Specify that the output path must be outside the source directory.
+- Specify that output paths must not overlap source inputs.
+- Require `--output` when archiving multiple source paths.
 - Specify and verify that failed archive writes do not publish partial output.
 - License the project under the MIT License.
 - Print compression duration, entry counts, source and archive sizes, and SHA-256.
@@ -18,7 +19,7 @@
 
 ### Added
 
-- Select specific files and directories with optional positional entry paths.
+- Accept multiple file and directory inputs as positional source paths.
 - Publish GitHub Releases with target-specific binary packages when a stable
   `vMAJOR.MINOR.PATCH` tag is pushed.
 - Attach a `SHA256SUMS` manifest for release packages.

@@ -91,22 +91,24 @@ fn archive_entries_have_normalized_order_and_metadata() {
 }
 
 #[test]
-fn selected_files_and_directories_are_archived_with_required_parents() {
+fn multiple_sources_archive_under_their_basenames() {
     let directory = tempdir().unwrap();
-    let source = directory.path().join("input");
-    fs::create_dir_all(source.join("src")).unwrap();
-    fs::create_dir_all(source.join("assets/icons")).unwrap();
-    fs::write(source.join("README.md"), b"readme").unwrap();
-    fs::write(source.join("src/main.rs"), b"main").unwrap();
-    fs::write(source.join("src/other.rs"), b"other").unwrap();
-    fs::write(source.join("assets/icons/app.png"), b"image").unwrap();
-    let output = directory.path().join("selected.tar.gz");
-    let selected = vec!["README.md".into(), "src/main.rs".into(), "assets".into()];
+    let file_dir = directory.path().join("code");
+    let assets = directory.path().join("assets");
+    fs::create_dir_all(&file_dir).unwrap();
+    fs::create_dir_all(assets.join("icons")).unwrap();
+    let main_file = file_dir.join("main.rs");
+    fs::write(&main_file, b"main").unwrap();
+    fs::write(directory.path().join("README.md"), b"readme").unwrap();
+    fs::write(assets.join("icons/app.png"), b"image").unwrap();
+    let sources = vec![main_file, directory.path().join("README.md"), assets];
+    let output = directory.path().join("multiple.tar.gz");
 
-    let stats = dtar::compress_directory_with_entries(&source, &output, false, &selected).unwrap();
+    let stats = dtar::compress_sources(&sources, &output, false).unwrap();
 
     assert_eq!(stats.files, 3);
-    assert_eq!(stats.directories, 3);
+    assert_eq!(stats.directories, 2);
+    assert_eq!(stats.source_bytes, 15);
     let decoder = GzDecoder::new(File::open(output).unwrap());
     let mut archive = Archive::new(decoder);
     let paths = archive
@@ -128,29 +130,54 @@ fn selected_files_and_directories_are_archived_with_required_parents() {
             "assets",
             "assets/icons",
             "assets/icons/app.png",
-            "src",
-            "src/main.rs"
+            "main.rs"
         ]
     );
 }
 
 #[test]
-fn exclusions_filter_selected_directories() {
+fn single_directory_source_keeps_contents_only_layout() {
     let directory = tempdir().unwrap();
-    let source = directory.path().join("input");
-    fs::create_dir_all(source.join("data")).unwrap();
-    fs::write(source.join("data/keep.txt"), b"keep").unwrap();
-    fs::write(source.join("data/skip.tmp"), b"skip").unwrap();
-    let output = directory.path().join("selected.tar.gz");
-    let selected = vec!["data".into()];
-    let excludes = vec!["*.tmp".to_owned()];
+    let source = directory.path().join("project");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(source.join("src/main.rs"), b"main").unwrap();
+    let output = directory.path().join("single.tar.gz");
 
-    let stats = dtar::compress_directory_with_entries_and_excludes(
-        &source, &output, false, &selected, &excludes,
-    )
-    .unwrap();
+    dtar::compress_sources(std::slice::from_ref(&source), &output, false).unwrap();
 
-    assert_eq!(stats.files, 1);
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["src", "src/main.rs"]);
+}
+
+#[test]
+fn exclusions_apply_to_normalized_paths_from_multiple_sources() {
+    let directory = tempdir().unwrap();
+    let assets = directory.path().join("assets");
+    fs::create_dir(&assets).unwrap();
+    fs::write(assets.join("keep.png"), b"keep").unwrap();
+    fs::write(assets.join("skip.tmp"), b"skip").unwrap();
+    let readme = directory.path().join("README.md");
+    fs::write(&readme, b"readme").unwrap();
+    let sources = vec![assets, readme];
+    let output = directory.path().join("filtered.tar.gz");
+    let excludes = vec!["assets/*.tmp".to_owned()];
+
+    let stats = dtar::compress_sources_with_excludes(&sources, &output, false, &excludes).unwrap();
+
+    assert_eq!(stats.files, 2);
     assert_eq!(stats.directories, 1);
     let decoder = GzDecoder::new(File::open(output).unwrap());
     let mut archive = Archive::new(decoder);
@@ -166,39 +193,46 @@ fn exclusions_filter_selected_directories() {
                 .into_owned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(paths, ["data", "data/keep.txt"]);
+    assert_eq!(paths, ["README.md", "assets", "assets/keep.png"]);
 }
 
 #[test]
-fn invalid_entry_selections_are_rejected() {
+fn duplicate_source_basenames_are_rejected() {
     let directory = tempdir().unwrap();
-    let source = directory.path().join("input");
-    fs::create_dir(&source).unwrap();
-    fs::write(source.join("file.txt"), b"content").unwrap();
+    let first_dir = directory.path().join("first");
+    let second_dir = directory.path().join("second");
+    fs::create_dir_all(&first_dir).unwrap();
+    fs::create_dir_all(&second_dir).unwrap();
+    let first = first_dir.join("same.txt");
+    let second = second_dir.join("same.txt");
+    fs::write(&first, b"first").unwrap();
+    fs::write(&second, b"second").unwrap();
+    let sources = vec![first, second];
+    let excludes = vec!["same.txt".to_owned()];
 
-    let outside = vec!["../outside.txt".into()];
-    let error = dtar::plan_archive_with_entries(
-        &source,
-        directory.path().join("outside.tar.gz"),
+    let error = dtar::plan_sources(
+        &sources,
+        directory.path().join("duplicate.tar.gz"),
         false,
-        &outside,
-        &[],
+        &excludes,
     )
     .err()
-    .expect("entry outside source was accepted");
-    assert!(error.to_string().contains("source-relative"));
+    .expect("duplicate archive paths were accepted");
+    assert!(error.to_string().contains("same archive path"));
+}
 
-    let missing = vec!["missing.txt".into()];
-    let error = dtar::plan_archive_with_entries(
-        &source,
-        directory.path().join("missing.tar.gz"),
-        false,
-        &missing,
-        &[],
-    )
-    .err()
-    .expect("missing entry was accepted");
-    assert!(error.to_string().contains("cannot inspect selected entry"));
+#[test]
+fn output_cannot_replace_a_file_source_even_with_force() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("source.txt");
+    fs::write(&source, b"preserve me").unwrap();
+
+    let error = dtar::plan_sources(std::slice::from_ref(&source), &source, true, &[])
+        .err()
+        .expect("output was allowed to replace a source file");
+
+    assert!(error.to_string().contains("cannot replace source file"));
+    assert_eq!(fs::read(source).unwrap(), b"preserve me");
 }
 
 #[test]
@@ -270,6 +304,14 @@ fn cli_prints_compression_statistics() {
     assert!(stdout.contains("Files: 1 | Directories: 1\nSource size: 5 bytes | Archive size:"));
     assert!(stdout.contains("Elapsed:"));
     assert!(stdout.contains("SHA-256:"));
+}
+
+#[test]
+fn cli_requires_at_least_one_source() {
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar")).output().unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Usage: dtar"));
 }
 
 #[test]
@@ -347,22 +389,24 @@ fn dry_run_prints_excluded_archive_tree_without_creating_output() {
 }
 
 #[test]
-fn cli_selection_applies_to_dry_run_and_compression() {
+fn cli_archives_multiple_file_and_directory_sources() {
     let directory = tempdir().unwrap();
-    let source = directory.path().join("input");
-    fs::create_dir_all(source.join("src")).unwrap();
-    fs::create_dir_all(source.join("assets")).unwrap();
-    fs::write(source.join("README.md"), b"readme").unwrap();
-    fs::write(source.join("src/main.rs"), b"main").unwrap();
-    fs::write(source.join("src/other.rs"), b"other").unwrap();
-    fs::write(source.join("assets/logo.png"), b"logo").unwrap();
-    let output_path = directory.path().join("selected.tar.gz");
+    let code = directory.path().join("code");
+    let assets = directory.path().join("assets");
+    fs::create_dir_all(&code).unwrap();
+    fs::create_dir_all(&assets).unwrap();
+    let main_file = code.join("main.rs");
+    let readme = directory.path().join("README.md");
+    fs::write(&main_file, b"main").unwrap();
+    fs::write(&readme, b"readme").unwrap();
+    fs::write(assets.join("logo.png"), b"logo").unwrap();
+    let sources = [&main_file, &readme, &assets];
+    let output_path = directory.path().join("multiple.tar.gz");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
         .args(["--dry-run", "--output"])
         .arg(&output_path)
-        .arg(&source)
-        .args(["README.md", "src/main.rs", "assets"])
+        .args(sources)
         .output()
         .unwrap();
 
@@ -373,16 +417,16 @@ fn cli_selection_applies_to_dry_run_and_compression() {
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("README.md"));
-    assert!(stdout.contains("`-- src/\n    `-- main.rs"));
+    assert!(stdout.contains("main.rs"));
     assert!(stdout.contains("logo.png"));
-    assert!(!stdout.contains("src/other.rs"));
+    assert!(stdout.contains("assets/"));
+    assert!(stdout.contains("Archive/"));
     assert!(!output_path.exists());
 
     let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(sources)
         .args(["--quiet", "--output"])
         .arg(&output_path)
-        .arg(&source)
-        .args(["README.md", "src/main.rs", "assets"])
         .output()
         .unwrap();
     assert!(
@@ -404,16 +448,92 @@ fn cli_selection_applies_to_dry_run_and_compression() {
                 .into_owned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        paths,
-        [
-            "README.md",
-            "assets",
-            "assets/logo.png",
-            "src",
-            "src/main.rs"
-        ]
+    assert_eq!(paths, ["README.md", "assets", "assets/logo.png", "main.rs"]);
+}
+
+#[test]
+fn cli_requires_output_for_multiple_sources() {
+    let directory = tempdir().unwrap();
+    let first_dir = directory.path().join("first");
+    let second_dir = directory.path().join("second");
+    fs::create_dir_all(&first_dir).unwrap();
+    fs::create_dir_all(&second_dir).unwrap();
+    let first = first_dir.join("one.txt");
+    let second = second_dir.join("two.txt");
+    fs::write(&first, b"one").unwrap();
+    fs::write(&second, b"two").unwrap();
+
+    let missing_output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .arg("--quiet")
+        .arg(&first)
+        .arg(&second)
+        .output()
+        .unwrap();
+
+    assert!(!missing_output.status.success());
+    assert!(String::from_utf8_lossy(&missing_output.stderr)
+        .contains("--output is required when multiple source paths are provided"));
+    assert!(!first_dir.join("one.txt.tar.gz").exists());
+
+    let dry_run_without_output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run"])
+        .arg(&first)
+        .arg(&second)
+        .output()
+        .unwrap();
+    assert!(!dry_run_without_output.status.success());
+    assert!(String::from_utf8_lossy(&dry_run_without_output.stderr)
+        .contains("--output is required when multiple source paths are provided"));
+
+    let archive_path = directory.path().join("combined.tar.gz");
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--quiet", "--output"])
+        .arg(&archive_path)
+        .arg(&first)
+        .arg(&second)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
+    assert!(archive_path.is_file());
+    let decoder = GzDecoder::new(File::open(archive_path).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["one.txt", "two.txt"]);
+}
+
+#[test]
+fn cli_keeps_default_output_for_a_single_file() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("source.txt");
+    fs::write(&source, b"content").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .arg("--quiet")
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(directory.path().join("source.txt.tar.gz").is_file());
 }
 
 #[test]

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::BTreeSet,
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
@@ -19,6 +20,11 @@ struct Entry {
     archive_path: String,
     kind: ArchiveEntryKind,
     size: u64,
+}
+
+struct SourceInput {
+    path: PathBuf,
+    is_directory: bool,
 }
 
 /// The kind of an entry in an archive plan.
@@ -68,7 +74,7 @@ pub struct ArchiveStats {
     pub sha256: String,
     /// Number of archived regular files.
     pub files: u64,
-    /// Number of archived directories, excluding the source root.
+    /// Number of archived directory entries.
     pub directories: u64,
     /// Total size of the source files before compression, in bytes.
     pub source_bytes: u64,
@@ -92,7 +98,7 @@ pub fn compress_directory(
 
 /// Compresses a directory while excluding entries matching any glob pattern.
 ///
-/// Patterns match source-relative paths using `/` separators. A matching
+/// Patterns match archive-relative paths using `/` separators. A matching
 /// directory and its contents are omitted. Returns statistics for the
 /// completed archive.
 pub fn compress_directory_with_excludes(
@@ -129,7 +135,7 @@ where
 
 /// Compresses a directory with glob exclusions and progress reporting.
 ///
-/// Patterns match source-relative paths using `/` separators. A matching
+/// Patterns match archive-relative paths using `/` separators. A matching
 /// directory and its contents are omitted. The callback is invoked once before
 /// writing begins and once after each included entry is written.
 pub fn compress_directory_with_excludes_and_progress<F>(
@@ -142,61 +148,52 @@ pub fn compress_directory_with_excludes_and_progress<F>(
 where
     F: FnMut(u64, u64),
 {
-    compress_directory_with_entries_and_excludes_and_progress(
-        source,
+    let source = source.as_ref();
+    ensure_directory_source(source)?;
+    compress_sources_with_excludes_and_progress(
+        &[source.to_path_buf()],
         output,
         overwrite,
-        &[],
         exclude_patterns,
         progress,
     )
 }
 
-/// Compresses selected source-relative files and directories into a
-/// deterministic tar.gz archive. Selected directories are included
-/// recursively, and their parent directories are included as needed.
-pub fn compress_directory_with_entries(
-    source: impl AsRef<Path>,
+/// Compresses one or more files and directories into a deterministic tar.gz
+/// archive. A single directory retains the directory-only layout; multiple
+/// inputs are stored under their basenames.
+pub fn compress_sources(
+    sources: &[PathBuf],
     output: impl AsRef<Path>,
     overwrite: bool,
-    entry_paths: &[PathBuf],
 ) -> Result<ArchiveStats> {
-    compress_directory_with_entries_and_excludes_and_progress(
-        source,
-        output,
-        overwrite,
-        entry_paths,
-        &[],
-        |_, _| {},
-    )
+    compress_sources_with_excludes(sources, output, overwrite, &[])
 }
 
-/// Compresses selected source-relative files and directories while excluding
-/// entries matching any source-relative glob pattern.
-pub fn compress_directory_with_entries_and_excludes(
-    source: impl AsRef<Path>,
+/// Compresses one or more files and directories while excluding entries
+/// matching archive-relative glob patterns.
+pub fn compress_sources_with_excludes(
+    sources: &[PathBuf],
     output: impl AsRef<Path>,
     overwrite: bool,
-    entry_paths: &[PathBuf],
     exclude_patterns: &[String],
 ) -> Result<ArchiveStats> {
-    compress_directory_with_entries_and_excludes_and_progress(
-        source,
+    compress_sources_with_excludes_and_progress(
+        sources,
         output,
         overwrite,
-        entry_paths,
         exclude_patterns,
         |_, _| {},
     )
 }
 
-/// Compresses selected source-relative entries with exclusions and progress
-/// reporting. Exclusions take precedence over selected entries.
-pub fn compress_directory_with_entries_and_excludes_and_progress<F>(
-    source: impl AsRef<Path>,
+/// Compresses one or more files and directories with exclusions and progress
+/// reporting. A single directory retains the directory-only layout; with
+/// multiple inputs, each input is stored under its basename.
+pub fn compress_sources_with_excludes_and_progress<F>(
+    sources: &[PathBuf],
     output: impl AsRef<Path>,
     overwrite: bool,
-    entry_paths: &[PathBuf],
     exclude_patterns: &[String],
     mut progress: F,
 ) -> Result<ArchiveStats>
@@ -204,7 +201,7 @@ where
     F: FnMut(u64, u64),
 {
     let started = Instant::now();
-    let plan = plan_archive_with_entries(source, output, overwrite, entry_paths, exclude_patterns)?;
+    let plan = plan_sources(sources, output, overwrite, exclude_patterns)?;
     let ArchivePlan { output, entries } = plan;
     let total = entries.len() as u64;
     let files = entries
@@ -327,7 +324,7 @@ fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
             || pattern.as_bytes().get(1) == Some(&b':')
             || pattern.split('/').any(|component| component == "..")
         {
-            bail!("exclude patterns must be source-relative and use '/' separators: {pattern:?}");
+            bail!("exclude patterns must be archive-relative and use '/' separators: {pattern:?}");
         }
 
         let glob = GlobBuilder::new(pattern)
@@ -341,36 +338,46 @@ fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
 
 /// Plans an archive without creating or modifying the destination file.
 ///
-/// The source, destination, overwrite policy, and exclusion patterns are
-/// validated exactly as they are for compression. Entries are returned in
-/// deterministic archive order and directories matched by an exclusion are
-/// pruned recursively.
+/// The single directory, destination, overwrite policy, and exclusion
+/// patterns are validated exactly as they are for compression. The directory
+/// contents are archived without a top-level directory entry.
 pub fn plan_archive(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
     overwrite: bool,
     exclude_patterns: &[String],
 ) -> Result<ArchivePlan> {
-    plan_archive_with_entries(source, output, overwrite, &[], exclude_patterns)
+    let source = source.as_ref();
+    ensure_directory_source(source)?;
+    plan_sources(&[source.to_path_buf()], output, overwrite, exclude_patterns)
 }
 
-/// Plans an archive containing the requested source-relative entries without
-/// creating or modifying the destination file. Selected directories are
-/// included recursively, with necessary parent directories.
-pub fn plan_archive_with_entries(
-    source: impl AsRef<Path>,
+/// Plans an archive from one or more files or directories without creating or
+/// modifying the destination file. With one directory, its contents are
+/// archived without the directory's basename. Otherwise, each input is stored
+/// under its basename.
+pub fn plan_sources(
+    sources: &[PathBuf],
     output: impl AsRef<Path>,
     overwrite: bool,
-    entry_paths: &[PathBuf],
     exclude_patterns: &[String],
 ) -> Result<ArchivePlan> {
-    let source = canonicalize_source(source.as_ref())?;
+    let sources = canonicalize_sources(sources)?;
     let output = resolve_output_path(output.as_ref())?;
-    if output.starts_with(&source) {
-        bail!(
-            "output archive must be outside the source directory: {}",
-            output.display()
-        );
+    for source in &sources {
+        if source.is_directory && output.starts_with(&source.path) {
+            bail!(
+                "output archive must be outside source directory {}: {}",
+                source.path.display(),
+                output.display()
+            );
+        }
+        if !source.is_directory && output == source.path {
+            bail!(
+                "output archive cannot replace source file: {}",
+                source.path.display()
+            );
+        }
     }
     if output.is_dir() {
         bail!("output archive path is a directory: {}", output.display());
@@ -382,30 +389,118 @@ pub fn plan_archive_with_entries(
         );
     }
 
-    let entry_paths = normalize_entry_paths(entry_paths)?;
-    validate_entry_paths(&source, &entry_paths)?;
     let excludes = build_excludes(exclude_patterns)?;
-    let mut entries = collect_entries(&source, &excludes, &entry_paths)?;
+    let include_directory_roots = sources.len() > 1;
+    if include_directory_roots {
+        let mut basenames = BTreeSet::new();
+        for source in &sources {
+            let basename = source_basename(&source.path)?;
+            if !basenames.insert(basename.clone()) {
+                bail!("multiple source paths map to the same archive path: {basename}");
+            }
+        }
+    }
+    let mut entries = Vec::new();
+    for source in sources {
+        if source.is_directory {
+            let archive_prefix = if include_directory_roots {
+                Some(source_basename(&source.path)?)
+            } else {
+                None
+            };
+            entries.extend(collect_directory_entries(
+                &source.path,
+                archive_prefix.as_deref(),
+                &excludes,
+            )?);
+        } else {
+            let archive_path = source_basename(&source.path)?;
+            if !excludes.is_match(&archive_path) {
+                let metadata = fs::metadata(&source.path)
+                    .with_context(|| format!("cannot inspect {}", source.path.display()))?;
+                entries.push(Entry {
+                    source: source.path,
+                    archive_path,
+                    kind: ArchiveEntryKind::File,
+                    size: metadata.len(),
+                });
+            }
+        }
+    }
     entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
+    for pair in entries.windows(2) {
+        if pair[0].archive_path == pair[1].archive_path {
+            bail!(
+                "multiple source paths map to the same archive path: {}",
+                pair[0].archive_path
+            );
+        }
+    }
 
     Ok(ArchivePlan { output, entries })
 }
 
-fn canonicalize_source(source: &Path) -> Result<PathBuf> {
-    let source = fs::canonicalize(source)
-        .with_context(|| format!("cannot access source directory {}", source.display()))?;
-    if !source.is_dir() {
+fn ensure_directory_source(source: &Path) -> Result<()> {
+    let metadata = fs::metadata(source)
+        .with_context(|| format!("cannot access source {}", source.display()))?;
+    if !metadata.is_dir() {
         bail!("source is not a directory: {}", source.display());
     }
-    Ok(source)
+    Ok(())
 }
 
-fn collect_entries(
+fn canonicalize_sources(sources: &[PathBuf]) -> Result<Vec<SourceInput>> {
+    if sources.is_empty() {
+        bail!("at least one source path is required");
+    }
+
+    sources
+        .iter()
+        .map(|source| {
+            let metadata = fs::symlink_metadata(source)
+                .with_context(|| format!("cannot access source {}", source.display()))?;
+            if metadata.file_type().is_symlink() {
+                bail!("symbolic links are not supported: {}", source.display());
+            }
+            if !metadata.is_dir() && !metadata.is_file() {
+                bail!("unsupported filesystem entry: {}", source.display());
+            }
+            let path = fs::canonicalize(source)
+                .with_context(|| format!("cannot resolve source {}", source.display()))?;
+            Ok(SourceInput {
+                path,
+                is_directory: metadata.is_dir(),
+            })
+        })
+        .collect()
+}
+
+fn source_basename(source: &Path) -> Result<String> {
+    source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .with_context(|| format!("source path has no UTF-8 basename: {}", source.display()))
+}
+
+fn collect_directory_entries(
     root: &Path,
+    archive_prefix: Option<&str>,
     excludes: &GlobSet,
-    selected_paths: &[PathBuf],
 ) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
+    if let Some(archive_path) = archive_prefix {
+        if excludes.is_match(archive_path) {
+            return Ok(entries);
+        }
+        entries.push(Entry {
+            source: root.to_path_buf(),
+            archive_path: archive_path.to_owned(),
+            kind: ArchiveEntryKind::Directory,
+            size: 0,
+        });
+    }
+
     let mut pending = vec![root.to_path_buf()];
 
     while let Some(directory) = pending.pop() {
@@ -420,14 +515,11 @@ fn collect_entries(
             let relative = path
                 .strip_prefix(root)
                 .with_context(|| format!("cannot make {} relative to source", path.display()))?;
-            if !selected_paths.is_empty()
-                && !selected_paths.iter().any(|selected| {
-                    relative.starts_with(selected) || selected.starts_with(relative)
-                })
-            {
-                continue;
-            }
-            let archive_path = normalize_path(relative)?;
+            let archive_relative_path = normalize_path(relative)?;
+            let archive_path = archive_prefix.map_or_else(
+                || archive_relative_path.clone(),
+                |prefix| format!("{prefix}/{archive_relative_path}"),
+            );
 
             if excludes.is_match(&archive_path) {
                 continue;
@@ -459,63 +551,6 @@ fn collect_entries(
     }
 
     Ok(entries)
-}
-
-fn normalize_entry_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
-    paths
-        .iter()
-        .map(|path| {
-            let mut normalized = PathBuf::new();
-            for component in path.components() {
-                let part = match component {
-                    Component::CurDir => continue,
-                    Component::Normal(part) => part,
-                    _ => {
-                        bail!(
-                            "entry paths must be source-relative and must not contain '..': {}",
-                            path.display()
-                        );
-                    }
-                };
-                part.to_str().with_context(|| {
-                    format!("entry path is not valid UTF-8: {}", path.display())
-                })?;
-                normalized.push(part);
-            }
-            if normalized.as_os_str().is_empty() {
-                bail!(
-                    "entry path must name a file or directory: {}",
-                    path.display()
-                );
-            }
-            Ok(normalized)
-        })
-        .collect()
-}
-
-fn validate_entry_paths(root: &Path, paths: &[PathBuf]) -> Result<()> {
-    for relative in paths {
-        let mut current = root.to_path_buf();
-        let mut components = relative.components().peekable();
-        while let Some(Component::Normal(component)) = components.next() {
-            current.push(component);
-            let metadata = fs::symlink_metadata(&current)
-                .with_context(|| format!("cannot inspect selected entry {}", current.display()))?;
-            if metadata.file_type().is_symlink() {
-                bail!("symbolic links are not supported: {}", current.display());
-            }
-            if components.peek().is_some() && !metadata.is_dir() {
-                bail!(
-                    "selected entry parent is not a directory: {}",
-                    current.display()
-                );
-            }
-            if components.peek().is_none() && !metadata.is_dir() && !metadata.is_file() {
-                bail!("unsupported filesystem entry: {}", current.display());
-            }
-        }
-    }
-    Ok(())
 }
 
 fn normalize_path(path: &Path) -> Result<String> {

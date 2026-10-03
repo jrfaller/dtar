@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a command-line tool or library module in Rust that compresses a target directory into a .tar.gz archive. The output file must be 100% deterministic (reproducible). Running this utility on the same input directory structure must always yield a byte-for-byte identical output file with an identical cryptographic checksum (e.g., SHA-256), regardless of the host operating system, filesystem state, user context, or execution timestamp.
+Build a command-line tool or library module in Rust that compresses one or more files or directories into a .tar.gz archive. The output file must be 100% deterministic (reproducible). Running this utility on the same input paths and contents must always yield a byte-for-byte identical output file with an identical cryptographic checksum (e.g., SHA-256), regardless of the host operating system, filesystem state, user context, or execution timestamp.
 
 ## Core Dependencies
 
@@ -40,7 +40,7 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 
 1. Initialize Output Stream: Create a temporary file in the destination directory. Do not write directly to or truncate the requested output path.
 2. Layer the Encoders: Instantiat a flate2::write::GzEncoder linked to the file handle, and wrap it into a tar::Builder.
-3. Collect Entries: Recursively traverse the source directory. Strip the root prefix from each file to compute its relative archive path. Convert backslashes to forward slashes.
+3. Collect Entries: For each file or directory source, recursively collect supported entries. A single directory source uses paths relative to its contents; otherwise, put each source under its basename. Convert archive paths to forward slashes.
 4. Sort Entries: Sort the list of collected entries lexicographically based on their normalized relative path.
 5. Write with Clean Headers: Iteratively process each entry:
 	1. Initialize a clean tar::Header::new_gnu().
@@ -52,8 +52,9 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 
 ### Output Safety and Failure Handling
 
-The resolved output path must be outside the source directory. If it is inside
-or equal to the source directory, fail before creating or modifying any output.
+The resolved output path must be outside every directory input and must not be
+the path of any file input. If either condition is violated, fail before
+creating or modifying any output.
 The archive must be written to a temporary file in the destination directory and published only after writing, tar/gzip finalization, flushing, synchronization, and checksum calculation all succeed. If any of these operations fails before publication, the requested output path must remain unchanged: an existing archive must be preserved, and a first-time run must not leave a partial archive there. On handled errors, discard the temporary file. The temporary file must be on the same filesystem as the destination so publication can be atomic.
 
 ### Source Changes During Compression
@@ -70,16 +71,17 @@ consistent point-in-time copy.
 
 ## Command line
 
-The command syntax is `dtar [OPTIONS] <SOURCE> [ENTRY]...`. `<SOURCE>` is the
-source directory. Optional positional `ENTRY` paths are source-relative paths
-to regular files or directories. With no `ENTRY` paths, archive the entire
-source as before. Include a selected file, include a selected directory and
-its descendants recursively, and include parent directories needed to preserve
-selected paths. Reject absolute paths, paths containing `..`, missing paths,
-symbolic links, and unsupported filesystem entries. Normalize selected archive
-paths and sort all resulting entries deterministically. `--exclude` continues
-to apply to the selected plan; excluded directories and descendants remain
-omitted.
+The command syntax is `dtar [OPTIONS] <SOURCE>...`. Require at least one source
+path; each path may name a regular file or directory. With one directory,
+archive its contents without a top-level directory entry to preserve the
+existing layout. Store a single file under its basename. With multiple inputs,
+store each under its basename, including the basename and descendants for
+directories. Reject unsupported entries and inputs whose archive paths
+collide. Normalize all resulting archive paths and sort entries
+deterministically. With one source, default to an archive beside it named
+`<source-name>.tar.gz`. Require `--output` for multiple sources. Apply
+`--exclude` to normalized archive-relative paths; excluded directories and
+their descendants are omitted.
 
 The CLI must provide help and version flags, a progress bar for compression,
 and an archive checksum on successful completion.
@@ -87,14 +89,15 @@ and an archive checksum on successful completion.
 ### Completion Statistics
 
 After a successful compression, the CLI must print the elapsed end-to-end time,
-the number of regular files and directories archived (excluding the source
-root), the total uncompressed file size, the final archive size, and the
-archive's SHA-256 checksum unless quiet mode is enabled.
+the number of regular files and directories archived, the total uncompressed
+file size, the final archive size, and the archive's SHA-256 checksum unless
+quiet mode is enabled.
 
-Statistics must describe only a successfully published archive. The file and
-directory counts exclude the source root; source size is the total byte size of
-the archived regular files; archive size is the final `.tar.gz` size in bytes;
-and the checksum is the lowercase hexadecimal SHA-256 of the complete archive.
+Statistics must describe only a successfully published archive. Counts include
+the entries actually stored (a single directory input's root is omitted);
+source size is the total byte size of the archived regular files; archive size
+is the final `.tar.gz` size in bytes; and the checksum is the lowercase
+hexadecimal SHA-256 of the complete archive.
 Elapsed time starts with input validation and ends after the archive is
 persisted, including planning, writing, finalization, hashing, and publication,
 but excluding CLI output.
@@ -117,18 +120,17 @@ completion output, including the dry-run tree. Errors must still be reported.
 ### Excluding Entries
 
 The CLI must accept repeatable `--exclude PATTERN` options. Patterns must be
-valid globs matched against normalized, source-relative paths using `/`
+valid globs matched against normalized archive-relative paths using `/`
 separators. Wildcards may match across directory separators. An excluded
 directory and its descendants must be omitted; there are no implicit
 exclusions. Invalid patterns must produce an error rather than being ignored.
 
 ### Dry Run
 
-The `--dry-run` option must validate the source, destination, and exclusions,
-then print a tree of the entries that would be archived in deterministic order.
-It must validate and apply positional entry selections as well. It must not
-create, truncate, or replace the output archive. Exclusions must apply to the
-preview. Quiet mode suppresses the tree.
+The `--dry-run` option must validate all source paths, the destination, and
+exclusions, then print a tree of the entries that would be archived in
+deterministic order. It must not create, truncate, or replace the output
+archive. Exclusions must apply to the preview. Quiet mode suppresses the tree.
 
 ## Verification Criteria (Definition of Done)
 
@@ -139,5 +141,6 @@ The agent must provide a verification test (such as a local integration test) de
    create or replace the output file.
 4. A failure after writing has begun does not publish a partial archive, and
    preserves an existing destination even when replacement was requested.
-5. Positional selections include the requested files, recurse through selected
-   directories, and omit unselected entries in both compression and dry-run.
+5. Multiple file and directory inputs are archived under their basenames,
+   single-directory input retains its existing layout, and dry-run matches the
+   resulting archive tree.
