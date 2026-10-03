@@ -9,6 +9,15 @@
 - Check formatting: `cargo fmt --check`
 - Run Clippy with warnings treated as errors: `cargo clippy --all-targets -- -D warnings`
 
+## CI workflow
+
+`.github/workflows/ci.yml` skips pushes and pull requests when all changed files
+match its documentation-only `paths-ignore` patterns (`**.md` and `docs/**`).
+Mixed documentation and code changes still run CI. Use the workflow's
+`workflow_dispatch` trigger in GitHub Actions to run CI manually for a
+documentation-only change. Keep both event filters aligned if documentation
+uses additional paths or file extensions.
+
 ## Architecture
 
 `src/main.rs` defines the `clap` CLI (`dtar <SOURCE>`, with output, overwrite,
@@ -27,6 +36,9 @@ behavior; `README.md` documents the supported inputs and CLI.
 
 ## Project-specific invariants
 
+- Maintain a root-level `CHANGELOG.md` that lists user-visible changes. Update
+  it alongside each change, grouping entries under an appropriate version or
+  date heading.
 - Write commit subjects in Conventional Commit format (`type(scope): summary`)
   and end each subject with one relevant emoji, for example
   `fix(archive): preserve existing output 🛡️`.
