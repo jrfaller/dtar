@@ -77,13 +77,34 @@ dtar ./my-project --output ./dist/my-project.tar.gz
 
 ### `-f, --force`
 
-Replace an existing output archive atomically. Use this when rerunning a
-command that writes to the same output path. The existing archive is kept if
-compression fails; a partial archive is never published at the output path.
+Replace an existing output archive and, when `--checksum` is set, an existing
+`SHA256SUMS` manifest. Use this when rerunning a command that writes to the same
+output paths. The existing archive is kept if compression fails; a partial
+archive is never published at the output path.
 
 ```sh
 dtar ./my-project --output ./dist/my-project.tar.gz --force
 ```
+
+### `--checksum`
+
+Write a `SHA256SUMS` manifest beside the archive after successful compression.
+The manifest contains the archive's SHA-256 and filename, so it can be checked
+from the directory containing the manifest. If `SHA256SUMS` already exists,
+`--force` is required. With `--dry-run`, the manifest path is validated and
+shown but no files are created.
+
+```sh
+dtar ./my-project --output ./dist/my-project.tar.gz --checksum
+```
+
+Verify the archive from `./dist` with:
+
+```sh
+cd ./dist && sha256sum --check SHA256SUMS
+```
+
+On macOS, use `shasum -a 256 -c SHA256SUMS` instead.
 
 ### `-e, --exclude <PATTERN>`
 
@@ -145,13 +166,14 @@ dtar --version
 
 ### Complete example
 
-This writes an archive to `./dist`, excludes generated and temporary content,
-and replaces the archive if it already exists. Ensure `./dist` exists before
-running the command.
+This writes an archive and checksum manifest to `./dist`, excludes generated
+and temporary content, and replaces existing outputs. Ensure `./dist` exists
+before running the command.
 
 ```sh
 dtar ./my-project \
   --output ./dist/my-project.tar.gz \
+  --checksum \
   --force \
   --exclude .git \
   --exclude target \

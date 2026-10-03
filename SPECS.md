@@ -84,7 +84,13 @@ deterministically. With one source, default to an archive beside it named
 their descendants are omitted.
 
 The CLI must provide help and version flags, a progress bar for compression,
-and an archive checksum on successful completion.
+and an archive checksum on successful completion. The optional `--checksum`
+flag must write a `SHA256SUMS` manifest beside the archive containing the
+archive's lowercase hexadecimal SHA-256 and its filename in standard
+`sha256sum` format. Do not write the manifest unless archive compression and
+publication succeed. If the manifest already exists, require `--force` before
+replacing it. The output archive may not itself be named `SHA256SUMS` when the
+option is enabled.
 
 ### Completion Statistics
 
@@ -116,6 +122,8 @@ archive at the requested destination.
 
 The `--quiet`/`-q` option must suppress the progress bar and successful
 completion output, including the dry-run tree. Errors must still be reported.
+With `--dry-run --checksum`, validate and report the planned manifest path
+without creating or replacing it.
 
 ### Excluding Entries
 

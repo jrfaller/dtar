@@ -6,6 +6,7 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
+use sha2::{Digest, Sha256};
 use tar::Archive;
 use tempfile::tempdir;
 
@@ -304,6 +305,72 @@ fn cli_prints_compression_statistics() {
     assert!(stdout.contains("Files: 1 | Directories: 1\nSource size: 5 bytes | Archive size:"));
     assert!(stdout.contains("Elapsed:"));
     assert!(stdout.contains("SHA-256:"));
+}
+
+#[test]
+fn cli_writes_checksum_manifest_beside_archive() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::write(&source, b"checksum me").unwrap();
+    let archive = directory.path().join("result.tar.gz");
+    let manifest = directory.path().join("SHA256SUMS");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--checksum", "--output"])
+        .arg(&archive)
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let archive_bytes = fs::read(&archive).unwrap();
+    let expected = format!(
+        "{:x}  result.tar.gz\n",
+        Sha256::digest(archive_bytes.as_slice())
+    );
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), expected);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Created checksum manifest"));
+}
+
+#[test]
+fn checksum_manifest_collision_requires_force_and_dry_run_creates_nothing() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::write(&source, b"checksum me").unwrap();
+    let archive = directory.path().join("result.tar.gz");
+    let manifest = directory.path().join("SHA256SUMS");
+    fs::write(&manifest, "existing manifest").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--checksum", "--output"])
+        .arg(&archive)
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("use --force to replace it"));
+    assert!(!archive.exists());
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), "existing manifest");
+
+    let preview = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--checksum", "--force", "--output"])
+        .arg(&archive)
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        preview.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    assert!(String::from_utf8_lossy(&preview.stdout).contains("Checksum manifest:"));
+    assert!(!archive.exists());
+    assert_eq!(fs::read_to_string(manifest).unwrap(), "existing manifest");
 }
 
 #[test]

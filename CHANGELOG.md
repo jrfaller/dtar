@@ -19,6 +19,7 @@
 
 ### Added
 
+- Write an optional `SHA256SUMS` manifest beside the archive with `--checksum`.
 - Accept multiple file and directory inputs as positional source paths.
 - Publish GitHub Releases with target-specific binary packages when a stable
   `vMAJOR.MINOR.PATCH` tag is pushed.
