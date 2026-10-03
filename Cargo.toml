@@ -1,0 +1,15 @@
+[package]
+name = "dtar"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Create deterministic .tar.gz archives"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+indicatif = "0.17"
+sha2 = "0.10"
+tar = "0.4"
+tempfile = "3"
