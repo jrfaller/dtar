@@ -6,6 +6,26 @@ owners, names, and permissions are fixed, and the gzip timestamp and operating
 system fields are normalized. Compression uses the Rust DEFLATE backend and a
 fixed best-compression profile.
 
+## Why deterministic archives?
+
+Ordinary archive tools can produce different bytes for the same file contents
+because timestamps, ownership, permissions, or filesystem traversal order
+changed. `dtar` normalizes these details so that archiving the same supported
+directory contents with the same tool version and options produces the same
+archive bytes and SHA-256 checksum.
+
+This is useful for:
+
+- **Build pipelines and caches:** identical inputs produce identical artifacts,
+  avoiding cache misses and unnecessary rebuilds.
+- **Releases and mirrors:** compare checksums to confirm that independently
+  produced or copied packages are byte-for-byte identical.
+- **Backups and content-addressed storage:** stable hashes make unchanged
+  snapshots easier to identify and deduplicate.
+- **Reproducible packaging:** rerun packaging and compare the result against a
+  checksum from a trusted source. A checksum alone does not authenticate an
+  archive; use a trusted or signed checksum when authenticity matters.
+
 The tool archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
 must be valid UTF-8. Output archives must be outside the source directory.
