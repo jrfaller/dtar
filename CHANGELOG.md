@@ -8,6 +8,7 @@
 - Print compression duration, entry counts, source and archive sizes, and SHA-256.
 - Make `--quiet` suppress the successful-completion summary as well as progress.
 - Explain deterministic archive use cases in the README.
+- Document the benefit of storing generated archives in Git.
 
 ### Added
 

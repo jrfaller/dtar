@@ -22,6 +22,8 @@ This is useful for:
   produced or copied packages are byte-for-byte identical.
 - **Backups and content-addressed storage:** stable hashes make unchanged
   snapshots easier to identify and deduplicate.
+- **Git-tracked archives:** identical reruns leave the committed archive
+  unchanged, avoiding timestamp-only diffs and allowing Git to reuse its blob.
 - **Reproducible packaging:** rerun packaging and compare the result against a
   checksum from a trusted source. A checksum alone does not authenticate an
   archive; use a trusted or signed checksum when authenticity matters.
