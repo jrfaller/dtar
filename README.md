@@ -38,21 +38,95 @@ must be valid UTF-8. Output archives must be outside the source directory.
 dtar [OPTIONS] <SOURCE>
 ```
 
-By default, the archive is created next to the source directory as
-`<source-name>.tar.gz`. Use `-o`/`--output` to choose a path, `-f`/`--force` to
-replace an existing archive, repeat `-e`/`--exclude` to filter paths with glob
-patterns, and use `-q`/`--quiet` to hide the progress bar and success summary.
-Errors are still displayed in quiet mode. Patterns match source-relative paths
-with `/` separators; `*` can match across directories. Matching a directory
-excludes its whole subtree. No paths are excluded by default. For example:
+`<SOURCE>` is the directory to archive. The output defaults to a sibling named
+`<source-name>.tar.gz`; for example, archiving `./my-project` creates
+`./my-project.tar.gz`.
+
+### `<SOURCE>`
+
+Required positional argument: the directory whose files and subdirectories
+should be archived. The source root itself is not added as an entry.
 
 ```sh
-dtar ./my-project --exclude .git --exclude target --exclude '*.tmp'
+dtar ./my-project
 ```
 
-On success, `dtar` prints the file and directory counts, source and archive
-sizes, elapsed time, and the archive's SHA-256 checksum unless quiet mode is
-enabled. `--help` and `--version` are provided by the CLI.
+### `-o, --output <OUTPUT>`
+
+Choose the output archive path instead of the default sibling path. The output
+must be outside the source directory, and its parent directory must already
+exist. Existing output files are not replaced unless `--force` is also given.
+
+```sh
+dtar ./my-project --output ./dist/my-project.tar.gz
+```
+
+### `-f, --force`
+
+Replace an existing output archive atomically. Use this when rerunning a
+command that writes to the same output path.
+
+```sh
+dtar ./my-project --output ./dist/my-project.tar.gz --force
+```
+
+### `-e, --exclude <PATTERN>`
+
+Exclude paths matching a source-relative glob. This option can be repeated.
+Patterns use `/` separators, and `*` can match across directory boundaries.
+When a directory matches, it and its entire subtree are omitted. Nothing is
+excluded by default.
+
+```sh
+dtar ./my-project \
+  --exclude .git \
+  --exclude target \
+  --exclude '*.tmp'
+```
+
+### `-q, --quiet`
+
+Hide the progress bar and successful-completion summary. The archive is still
+created, and errors are still reported.
+
+```sh
+dtar ./my-project --quiet
+```
+
+### `-h, --help`
+
+Display the command syntax and all available options without starting a
+compression.
+
+```sh
+dtar --help
+```
+
+### `-V, --version`
+
+Print the installed `dtar` version.
+
+```sh
+dtar --version
+```
+
+### Complete example
+
+This writes an archive to `./dist`, excludes generated and temporary content,
+and replaces the archive if it already exists. Ensure `./dist` exists before
+running the command.
+
+```sh
+dtar ./my-project \
+  --output ./dist/my-project.tar.gz \
+  --force \
+  --exclude .git \
+  --exclude target \
+  --exclude '*.tmp'
+```
+
+Unless `--quiet` is set, successful compression prints the file and directory
+counts, source and archive sizes, elapsed time, and archive SHA-256 checksum.
 
 ## Build and test
 

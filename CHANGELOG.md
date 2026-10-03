@@ -9,6 +9,8 @@
 - Make `--quiet` suppress the successful-completion summary as well as progress.
 - Explain deterministic archive use cases in the README.
 - Document the benefit of storing generated archives in Git.
+- Expand README usage documentation with an example for every CLI argument and
+  option.
 
 ### Added
 

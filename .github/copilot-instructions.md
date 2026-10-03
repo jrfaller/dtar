@@ -56,7 +56,9 @@ behavior; `README.md` documents the supported inputs and CLI.
   specified behavior change, update `SPECS.md` in the same change.
 - Keep the root `README.md` usage guidance current: whenever a change affects
   how users invoke or interact with the program, update `README.md` in the same
-  change.
+  change. Its Usage section must explain every positional argument and option
+  individually, including defaults and behavior, with a runnable example for
+  each; keep it aligned with the CLI help and implementation.
 - Maintain a root-level `CHANGELOG.md` that lists user-visible changes. Update
   it alongside each change, grouping entries under an appropriate version or
   date heading.
