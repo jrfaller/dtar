@@ -30,7 +30,7 @@ struct Args {
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
 
-    /// Do not display the progress bar
+    /// Hide the progress bar and successful-completion summary
     #[arg(short, long)]
     quiet: bool,
 }
@@ -73,16 +73,18 @@ fn run() -> anyhow::Result<()> {
         },
     )?;
     progress.finish_and_clear();
-    println!("Created {}", output.display());
-    println!(
-        "Files: {} | Directories: {}\nSource size: {} bytes | Archive size: {} bytes\nElapsed: {:?}\nSHA-256: {}",
-        stats.files,
-        stats.directories,
-        stats.source_bytes,
-        stats.archive_bytes,
-        stats.elapsed,
-        stats.sha256
-    );
+    if !args.quiet {
+        println!("Created {}", output.display());
+        println!(
+            "Files: {} | Directories: {}\nSource size: {} bytes | Archive size: {} bytes\nElapsed: {:?}\nSHA-256: {}",
+            stats.files,
+            stats.directories,
+            stats.source_bytes,
+            stats.archive_bytes,
+            stats.elapsed,
+            stats.sha256
+        );
+    }
     Ok(())
 }
 

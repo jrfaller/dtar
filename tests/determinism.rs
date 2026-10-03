@@ -114,7 +114,7 @@ fn cli_prints_compression_statistics() {
     let output_path = directory.path().join("result.tar.gz");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
-        .args(["--quiet", "--output"])
+        .args(["--output"])
         .arg(output_path)
         .args(["--exclude", "*.tmp"])
         .arg(source)
@@ -130,6 +130,31 @@ fn cli_prints_compression_statistics() {
     assert!(stdout.contains("Files: 1 | Directories: 1\nSource size: 5 bytes | Archive size:"));
     assert!(stdout.contains("Elapsed:"));
     assert!(stdout.contains("SHA-256:"));
+}
+
+#[test]
+fn quiet_flag_suppresses_progress_and_success_summary() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("file.txt"), b"hello").unwrap();
+    let output_path = directory.path().join("result.tar.gz");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--quiet", "--output"])
+        .arg(&output_path)
+        .arg(source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+    assert!(output_path.is_file());
 }
 
 #[test]

@@ -58,7 +58,12 @@ The `dtar` command must have the flags an option expected for a compression comm
 After a successful compression, the CLI must print the elapsed end-to-end time,
 the number of regular files and directories archived (excluding the source
 root), the total uncompressed file size, the final archive size, and the
-archive's SHA-256 checksum.
+archive's SHA-256 checksum unless quiet mode is enabled.
+
+### Quiet Mode
+
+The `--quiet`/`-q` option must suppress the progress bar and successful
+completion summary. Errors must still be reported.
 
 ### Excluding Entries
 
