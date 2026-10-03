@@ -63,7 +63,7 @@ archive's SHA-256 checksum unless quiet mode is enabled.
 ### Quiet Mode
 
 The `--quiet`/`-q` option must suppress the progress bar and successful
-completion summary. Errors must still be reported.
+completion output, including the dry-run tree. Errors must still be reported.
 
 ### Excluding Entries
 
@@ -73,8 +73,17 @@ separators. Wildcards may match across directory separators. An excluded
 directory and its descendants must be omitted; there are no implicit
 exclusions. Invalid patterns must produce an error rather than being ignored.
 
+### Dry Run
+
+The `--dry-run` option must validate the source, destination, and exclusions,
+then print a tree of the entries that would be archived in deterministic order.
+It must not create, truncate, or replace the output archive. Exclusions must
+apply to the preview. Quiet mode suppresses the tree.
+
 ## Verification Criteria (Definition of Done)
 
 The agent must provide a verification test (such as a local integration test) demonstrating that:
 1. Compressing an arbitrary folder twice results in identical files.
 2. Manually changing a local file's modification time on disk (touch command) and rerunning the compressor still yields an identical SHA-256 hash output.
+3. A dry run prints the included archive tree, respects exclusions, and does not
+   create or replace the output file.

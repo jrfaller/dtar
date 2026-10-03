@@ -84,10 +84,26 @@ dtar ./my-project \
   --exclude '*.tmp'
 ```
 
+### `--dry-run`
+
+Validate the source, output path, and exclusions, then print a tree of entries
+that would be archived without creating or replacing the output. Exclusions are
+applied to the preview. Destination checks still apply; use `--force` to preview
+an output path that already exists. The existing file will remain untouched. If
+combined with `--quiet`, the tree is hidden.
+
+```sh
+dtar ./my-project \
+  --output ./dist/my-project.tar.gz \
+  --exclude .git \
+  --exclude '*.tmp' \
+  --dry-run
+```
+
 ### `-q, --quiet`
 
-Hide the progress bar and successful-completion summary. The archive is still
-created, and errors are still reported.
+Hide the progress bar and all successful output. The archive is still created
+unless `--dry-run` is set, and errors are still reported.
 
 ```sh
 dtar ./my-project --quiet

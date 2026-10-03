@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process,
 };
@@ -30,9 +31,19 @@ struct Args {
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
 
-    /// Hide the progress bar and successful-completion summary
+    /// Print the archive tree without creating an archive
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Hide the progress bar and all successful output
     #[arg(short, long)]
     quiet: bool,
+}
+
+#[derive(Default)]
+struct TreeNode {
+    kind: Option<dtar::ArchiveEntryKind>,
+    children: BTreeMap<String, TreeNode>,
 }
 
 fn main() {
@@ -47,6 +58,30 @@ fn run() -> anyhow::Result<()> {
     let output = args
         .output
         .unwrap_or_else(|| default_output_path(&args.source));
+
+    if args.dry_run {
+        let plan = dtar::plan_archive(&args.source, &output, args.force, &args.exclude)?;
+        if !args.quiet {
+            println!("Dry run: no archive will be created.");
+            println!("Output: {}", plan.output_path().display());
+            let root_name = args
+                .source
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| args.source.display().to_string());
+            println!("{root_name}/");
+            let mut tree = TreeNode::default();
+            for entry in plan.entries() {
+                let mut node = &mut tree;
+                for component in entry.path.split('/') {
+                    node = node.children.entry(component.to_owned()).or_default();
+                }
+                node.kind = Some(entry.kind);
+            }
+            print_tree(&tree, "");
+        }
+        return Ok(());
+    }
 
     let progress = if args.quiet {
         ProgressBar::hidden()
@@ -86,6 +121,23 @@ fn run() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+fn print_tree(node: &TreeNode, prefix: &str) {
+    let child_count = node.children.len();
+    for (index, (name, child)) in node.children.iter().enumerate() {
+        let is_last = index + 1 == child_count;
+        let connector = if is_last { "`-- " } else { "|-- " };
+        let suffix = if child.kind == Some(dtar::ArchiveEntryKind::Directory) {
+            "/"
+        } else {
+            ""
+        };
+        println!("{prefix}{connector}{name}{suffix}");
+
+        let child_prefix = if is_last { "    " } else { "|   " };
+        print_tree(child, &format!("{prefix}{child_prefix}"));
+    }
 }
 
 fn default_output_path(source: &Path) -> PathBuf {

@@ -17,14 +17,48 @@ use tempfile::NamedTempFile;
 struct Entry {
     source: PathBuf,
     archive_path: String,
-    kind: EntryKind,
+    kind: ArchiveEntryKind,
     size: u64,
 }
 
-#[derive(Clone, Copy)]
-enum EntryKind {
+/// The kind of an entry in an archive plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchiveEntryKind {
     File,
     Directory,
+}
+
+/// A read-only view of one entry in an archive plan.
+#[derive(Clone, Copy, Debug)]
+pub struct PlannedEntry<'a> {
+    /// Normalized path relative to the source directory.
+    pub path: &'a str,
+    /// Whether this entry is a file or directory.
+    pub kind: ArchiveEntryKind,
+    /// File size in bytes; directory sizes are zero.
+    pub size: u64,
+}
+
+/// Validated archive contents and destination, without creating an archive.
+pub struct ArchivePlan {
+    output: PathBuf,
+    entries: Vec<Entry>,
+}
+
+impl ArchivePlan {
+    /// Returns the resolved destination path for this plan.
+    pub fn output_path(&self) -> &Path {
+        &self.output
+    }
+
+    /// Iterates over the archive entries in their deterministic write order.
+    pub fn entries(&self) -> impl Iterator<Item = PlannedEntry<'_>> {
+        self.entries.iter().map(|entry| PlannedEntry {
+            path: &entry.archive_path,
+            kind: entry.kind,
+            size: entry.size,
+        })
+    }
 }
 
 /// Summary statistics for a completed archive.
@@ -109,45 +143,20 @@ where
     F: FnMut(u64, u64),
 {
     let started = Instant::now();
-    let source = fs::canonicalize(source.as_ref()).with_context(|| {
-        format!(
-            "cannot access source directory {}",
-            source.as_ref().display()
-        )
-    })?;
-    if !source.is_dir() {
-        bail!("source is not a directory: {}", source.display());
-    }
-
-    let output = resolve_output_path(output.as_ref())?;
-    if output.starts_with(&source) {
-        bail!(
-            "output archive must be outside the source directory: {}",
-            output.display()
-        );
-    }
-    if output.exists() && !overwrite {
-        bail!(
-            "output already exists (use --force to replace it): {}",
-            output.display()
-        );
-    }
-
-    let excludes = build_excludes(exclude_patterns)?;
-    let mut entries = collect_entries(&source, &excludes)?;
-    entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
+    let plan = plan_archive(source, output, overwrite, exclude_patterns)?;
+    let ArchivePlan { output, entries } = plan;
     let total = entries.len() as u64;
     let files = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, EntryKind::File))
+        .filter(|entry| matches!(entry.kind, ArchiveEntryKind::File))
         .count() as u64;
     let directories = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, EntryKind::Directory))
+        .filter(|entry| matches!(entry.kind, ArchiveEntryKind::Directory))
         .count() as u64;
     let source_bytes = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, EntryKind::File))
+        .filter(|entry| matches!(entry.kind, ArchiveEntryKind::File))
         .try_fold(0_u64, |total, entry| total.checked_add(entry.size))
         .context("total source file size exceeds the supported range")?;
     progress(0, total);
@@ -173,13 +182,13 @@ where
         header.set_username("")?;
         header.set_groupname("")?;
         header.set_mode(match entry.kind {
-            EntryKind::File => 0o644,
-            EntryKind::Directory => 0o755,
+            ArchiveEntryKind::File => 0o644,
+            ArchiveEntryKind::Directory => 0o755,
         });
         header.set_size(entry.size);
         header.set_entry_type(match entry.kind {
-            EntryKind::File => EntryType::Regular,
-            EntryKind::Directory => EntryType::Directory,
+            ArchiveEntryKind::File => EntryType::Regular,
+            ArchiveEntryKind::Directory => EntryType::Directory,
         });
         header.set_path(&entry.archive_path).with_context(|| {
             format!("archive path cannot be represented: {}", entry.archive_path)
@@ -187,10 +196,10 @@ where
         header.set_cksum();
 
         match entry.kind {
-            EntryKind::Directory => archive
+            ArchiveEntryKind::Directory => archive
                 .append(&header, io::empty())
                 .with_context(|| format!("cannot archive directory {}", entry.archive_path))?,
-            EntryKind::File => {
+            ArchiveEntryKind::File => {
                 let mut file = File::open(&entry.source)
                     .with_context(|| format!("cannot read {}", entry.source.display()))?;
                 let metadata = file
@@ -269,6 +278,52 @@ fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
     builder.build().context("cannot compile exclude patterns")
 }
 
+/// Plans an archive without creating or modifying the destination file.
+///
+/// The source, destination, overwrite policy, and exclusion patterns are
+/// validated exactly as they are for compression. Entries are returned in
+/// deterministic archive order and directories matched by an exclusion are
+/// pruned recursively.
+pub fn plan_archive(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    exclude_patterns: &[String],
+) -> Result<ArchivePlan> {
+    let source = canonicalize_source(source.as_ref())?;
+    let output = resolve_output_path(output.as_ref())?;
+    if output.starts_with(&source) {
+        bail!(
+            "output archive must be outside the source directory: {}",
+            output.display()
+        );
+    }
+    if output.is_dir() {
+        bail!("output archive path is a directory: {}", output.display());
+    }
+    if output.exists() && !overwrite {
+        bail!(
+            "output already exists (use --force to replace it): {}",
+            output.display()
+        );
+    }
+
+    let excludes = build_excludes(exclude_patterns)?;
+    let mut entries = collect_entries(&source, &excludes)?;
+    entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
+
+    Ok(ArchivePlan { output, entries })
+}
+
+fn canonicalize_source(source: &Path) -> Result<PathBuf> {
+    let source = fs::canonicalize(source)
+        .with_context(|| format!("cannot access source directory {}", source.display()))?;
+    if !source.is_dir() {
+        bail!("source is not a directory: {}", source.display());
+    }
+    Ok(source)
+}
+
 fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
@@ -299,7 +354,7 @@ fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
                 entries.push(Entry {
                     source: path.clone(),
                     archive_path,
-                    kind: EntryKind::Directory,
+                    kind: ArchiveEntryKind::Directory,
                     size: 0,
                 });
                 pending.push(path);
@@ -307,7 +362,7 @@ fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
                 entries.push(Entry {
                     source: path,
                     archive_path,
-                    kind: EntryKind::File,
+                    kind: ArchiveEntryKind::File,
                     size: metadata.len(),
                 });
             } else {

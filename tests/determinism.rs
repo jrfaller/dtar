@@ -158,6 +158,55 @@ fn quiet_flag_suppresses_progress_and_success_summary() {
 }
 
 #[test]
+fn dry_run_prints_excluded_archive_tree_without_creating_output() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("nested")).unwrap();
+    fs::write(source.join("nested/keep.txt"), b"keep").unwrap();
+    fs::write(source.join("nested/skip.tmp"), b"skip").unwrap();
+    let output_path = directory.path().join("result.tar.gz");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--output"])
+        .arg(&output_path)
+        .args(["--exclude", "*.tmp"])
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let resolved_output = directory
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("result.tar.gz");
+    assert!(stdout.contains("Dry run: no archive will be created."));
+    assert!(stdout.contains(&format!("Output: {}", resolved_output.display())));
+    assert!(stdout.contains("input/\n`-- nested/\n    `-- keep.txt"));
+    assert!(!stdout.contains("skip.tmp"));
+    assert!(!output_path.exists());
+
+    fs::write(&output_path, b"existing archive").unwrap();
+    let overwrite_preview = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--force", "--output"])
+        .arg(&output_path)
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        overwrite_preview.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&overwrite_preview.stderr)
+    );
+    assert_eq!(fs::read(output_path).unwrap(), b"existing archive");
+}
+
+#[test]
 fn exclude_patterns_skip_files_and_prune_directories() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");

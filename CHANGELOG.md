@@ -19,3 +19,4 @@
 - Attach a `SHA256SUMS` manifest for release packages.
 - Support repeatable glob patterns for excluding files and directories from
   archives.
+- Preview the archive entry tree with `--dry-run` without creating an archive.

@@ -36,15 +36,17 @@ packages with `sha256sum --check SHA256SUMS` on Linux or
 ## Architecture
 
 `src/main.rs` defines the `clap` CLI (`dtar <SOURCE>`, with output, overwrite,
-exclude, and quiet options), drives an `indicatif` progress bar, calls the
-library, and prints its completion statistics and SHA-256.
+exclude, dry-run, and quiet options), drives an `indicatif` progress bar, and
+uses `src/lib.rs` both to plan archive entries and to compress them.
 
 `src/lib.rs` implements the reusable compressor. It canonicalizes and validates
 paths, recursively collects regular files and directories, normalizes and sorts
 archive paths, writes sanitized tar headers through gzip to a temporary file,
 finalizes and hashes that file, then atomically persists it and returns an
-`ArchiveStats` report. The progress-aware library entry point is shared by the
-CLI and the no-op-progress API wrapper.
+`ArchiveStats` report. `plan_archive` shares source, output, and exclusion
+validation with compression but does not create the archive, enabling the CLI's
+dry-run tree. The progress-aware library entry point is shared by the CLI and
+the no-op-progress API wrapper.
 
 `tests/determinism.rs` exercises reproducibility, metadata and entry ordering,
 and protection of an existing output. `SPECS.md` defines the required archive
@@ -79,6 +81,8 @@ behavior; `README.md` documents the supported inputs and CLI.
   the source tree.
 - Exclude patterns match normalized source-relative paths, with `/` separators.
   Excluded directories are pruned recursively; do not add implicit exclusions.
+- Dry-run output must use the same validated, sorted archive plan as compression
+  and must never create or replace the output file.
 - Write to a temporary file in the destination directory and only publish a
   fully finalized, hashed archive. Preserve an existing destination unless
   overwrite was explicitly requested.
