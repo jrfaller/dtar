@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use flate2::{Compression, GzBuilder};
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use sha2::{Digest, Sha256};
 use tar::{Builder, EntryType, Header};
 use tempfile::NamedTempFile;
@@ -52,7 +53,27 @@ pub fn compress_directory(
     output: impl AsRef<Path>,
     overwrite: bool,
 ) -> Result<ArchiveStats> {
-    compress_directory_with_progress(source, output, overwrite, |_, _| {})
+    compress_directory_with_excludes(source, output, overwrite, &[])
+}
+
+/// Compresses a directory while excluding entries matching any glob pattern.
+///
+/// Patterns match source-relative paths using `/` separators. A matching
+/// directory and its contents are omitted. Returns statistics for the
+/// completed archive.
+pub fn compress_directory_with_excludes(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    exclude_patterns: &[String],
+) -> Result<ArchiveStats> {
+    compress_directory_with_excludes_and_progress(
+        source,
+        output,
+        overwrite,
+        exclude_patterns,
+        |_, _| {},
+    )
 }
 
 /// Compresses a directory, reporting completed and total archive entries.
@@ -64,6 +85,24 @@ pub fn compress_directory_with_progress<F>(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
     overwrite: bool,
+    progress: F,
+) -> Result<ArchiveStats>
+where
+    F: FnMut(u64, u64),
+{
+    compress_directory_with_excludes_and_progress(source, output, overwrite, &[], progress)
+}
+
+/// Compresses a directory with glob exclusions and progress reporting.
+///
+/// Patterns match source-relative paths using `/` separators. A matching
+/// directory and its contents are omitted. The callback is invoked once before
+/// writing begins and once after each included entry is written.
+pub fn compress_directory_with_excludes_and_progress<F>(
+    source: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    overwrite: bool,
+    exclude_patterns: &[String],
     mut progress: F,
 ) -> Result<ArchiveStats>
 where
@@ -94,7 +133,8 @@ where
         );
     }
 
-    let mut entries = collect_entries(&source)?;
+    let excludes = build_excludes(exclude_patterns)?;
+    let mut entries = collect_entries(&source, &excludes)?;
     entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
     let total = entries.len() as u64;
     let files = entries
@@ -206,7 +246,30 @@ where
     })
 }
 
-fn collect_entries(root: &Path) -> Result<Vec<Entry>> {
+fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        if pattern.is_empty() {
+            bail!("exclude pattern must not be empty");
+        }
+        if pattern.starts_with('/')
+            || pattern.contains('\\')
+            || pattern.as_bytes().get(1) == Some(&b':')
+            || pattern.split('/').any(|component| component == "..")
+        {
+            bail!("exclude patterns must be source-relative and use '/' separators: {pattern:?}");
+        }
+
+        let glob = GlobBuilder::new(pattern)
+            .literal_separator(false)
+            .build()
+            .with_context(|| format!("invalid exclude pattern {pattern:?}"))?;
+        builder.add(glob);
+    }
+    builder.build().context("cannot compile exclude patterns")
+}
+
+fn collect_entries(root: &Path, excludes: &GlobSet) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
 
@@ -226,6 +289,9 @@ fn collect_entries(root: &Path) -> Result<Vec<Entry>> {
                 .with_context(|| format!("cannot make {} relative to source", path.display()))?;
             let archive_path = normalize_path(relative)?;
 
+            if excludes.is_match(&archive_path) {
+                continue;
+            }
             if metadata.file_type().is_symlink() {
                 bail!("symbolic links are not supported: {}", path.display());
             }

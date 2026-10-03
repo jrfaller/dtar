@@ -26,6 +26,10 @@ struct Args {
     #[arg(short, long)]
     force: bool,
 
+    /// Exclude source-relative paths matching this glob (repeatable)
+    #[arg(short, long, value_name = "PATTERN")]
+    exclude: Vec<String>,
+
     /// Do not display the progress bar
     #[arg(short, long)]
     quiet: bool,
@@ -58,10 +62,11 @@ fn run() -> anyhow::Result<()> {
         bar
     };
 
-    let stats = dtar::compress_directory_with_progress(
+    let stats = dtar::compress_directory_with_excludes_and_progress(
         &args.source,
         &output,
         args.force,
+        &args.exclude,
         |completed, total| {
             progress.set_length(total);
             progress.set_position(completed);

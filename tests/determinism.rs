@@ -110,11 +110,13 @@ fn cli_prints_compression_statistics() {
     let source = directory.path().join("input");
     fs::create_dir_all(source.join("nested")).unwrap();
     fs::write(source.join("nested/file.txt"), b"hello").unwrap();
+    fs::write(source.join("nested/ignored.tmp"), b"skip").unwrap();
     let output_path = directory.path().join("result.tar.gz");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
         .args(["--quiet", "--output"])
         .arg(output_path)
+        .args(["--exclude", "*.tmp"])
         .arg(source)
         .output()
         .unwrap();
@@ -128,4 +130,50 @@ fn cli_prints_compression_statistics() {
     assert!(stdout.contains("Files: 1 | Directories: 1\nSource size: 5 bytes | Archive size:"));
     assert!(stdout.contains("Elapsed:"));
     assert!(stdout.contains("SHA-256:"));
+}
+
+#[test]
+fn exclude_patterns_skip_files_and_prune_directories() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("build/cache")).unwrap();
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(source.join("build/cache/data.bin"), b"ignored").unwrap();
+    fs::write(source.join("src/discard.tmp"), b"ignored").unwrap();
+    fs::write(source.join("src/keep.rs"), b"keep").unwrap();
+    let output = directory.path().join("filtered.tar.gz");
+    let exclude_patterns = vec!["build".to_owned(), "*.tmp".to_owned()];
+
+    let stats =
+        dtar::compress_directory_with_excludes(&source, &output, false, &exclude_patterns).unwrap();
+
+    assert_eq!(stats.files, 1);
+    assert_eq!(stats.directories, 1);
+    assert_eq!(stats.source_bytes, 4);
+
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["src", "src/keep.rs"]);
+
+    let invalid_pattern = vec!["[".to_owned()];
+    let error = dtar::compress_directory_with_excludes(
+        &source,
+        directory.path().join("invalid.tar.gz"),
+        false,
+        &invalid_pattern,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("invalid exclude pattern"));
 }

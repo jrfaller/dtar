@@ -34,8 +34,8 @@ Release with target-specific packages attached (`.tar.gz` for Linux/macOS and
 ## Architecture
 
 `src/main.rs` defines the `clap` CLI (`dtar <SOURCE>`, with output, overwrite,
-and quiet options), drives an `indicatif` progress bar, calls the library, and
-prints its completion statistics and SHA-256.
+exclude, and quiet options), drives an `indicatif` progress bar, calls the
+library, and prints its completion statistics and SHA-256.
 
 `src/lib.rs` implements the reusable compressor. It canonicalizes and validates
 paths, recursively collects regular files and directories, normalizes and sorts
@@ -73,6 +73,8 @@ behavior; `README.md` documents the supported inputs and CLI.
   Symbolic links, special entries, and non-UTF-8 archive paths produce errors;
   do not silently follow, skip, or rewrite them. The output must remain outside
   the source tree.
+- Exclude patterns match normalized source-relative paths, with `/` separators.
+  Excluded directories are pruned recursively; do not add implicit exclusions.
 - Write to a temporary file in the destination directory and only publish a
   fully finalized, hashed archive. Preserve an existing destination unless
   overwrite was explicitly requested.

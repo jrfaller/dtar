@@ -18,10 +18,19 @@ dtar [OPTIONS] <SOURCE>
 
 By default, the archive is created next to the source directory as
 `<source-name>.tar.gz`. Use `-o`/`--output` to choose a path, `-f`/`--force` to
-replace an existing archive, and `-q`/`--quiet` to hide the progress bar. On
-success, `dtar` prints the file and directory counts, source and archive sizes,
-elapsed time, and the archive's SHA-256 checksum. `--help` and `--version` are
-provided by the CLI.
+replace an existing archive, repeat `-e`/`--exclude` to filter paths with glob
+patterns, and use `-q`/`--quiet` to hide the progress bar. Patterns match
+source-relative paths with `/` separators; `*` can match across directories.
+Matching a directory excludes its whole subtree. No paths are excluded by
+default. For example:
+
+```sh
+dtar ./my-project --exclude .git --exclude target --exclude '*.tmp'
+```
+
+On success, `dtar` prints the file and directory counts, source and archive
+sizes, elapsed time, and the archive's SHA-256 checksum. `--help` and
+`--version` are provided by the CLI.
 
 ## Build and test
 

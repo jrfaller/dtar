@@ -60,6 +60,14 @@ the number of regular files and directories archived (excluding the source
 root), the total uncompressed file size, the final archive size, and the
 archive's SHA-256 checksum.
 
+### Excluding Entries
+
+The CLI must accept repeatable `--exclude PATTERN` options. Patterns must be
+valid globs matched against normalized, source-relative paths using `/`
+separators. Wildcards may match across directory separators. An excluded
+directory and its descendants must be omitted; there are no implicit
+exclusions. Invalid patterns must produce an error rather than being ignored.
+
 ## Verification Criteria (Definition of Done)
 
 The agent must provide a verification test (such as a local integration test) demonstrating that:

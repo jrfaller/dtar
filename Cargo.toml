@@ -10,6 +10,7 @@ license = "MIT"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+globset = "0.4"
 indicatif = "0.17"
 sha2 = "0.10"
 tar = "0.4"

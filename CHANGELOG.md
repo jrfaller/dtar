@@ -11,3 +11,5 @@
 
 - Publish GitHub Releases with target-specific binary packages when a stable
   `vMAJOR.MINOR.PATCH` tag is pushed.
+- Support repeatable glob patterns for excluding files and directories from
+  archives.
