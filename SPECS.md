@@ -56,6 +56,18 @@ The resolved output path must be outside the source directory. If it is inside
 or equal to the source directory, fail before creating or modifying any output.
 The archive must be written to a temporary file in the destination directory and published only after writing, tar/gzip finalization, flushing, synchronization, and checksum calculation all succeed. If any of these operations fails before publication, the requested output path must remain unchanged: an existing archive must be preserved, and a first-time run must not leave a partial archive there. On handled errors, discard the temporary file. The temporary file must be on the same filesystem as the destination so publication can be atomic.
 
+### Source Changes During Compression
+
+Collect and sort the archive plan, including each regular file's size, before
+writing begins. Entries added after planning are not included. When each
+planned regular file is opened for writing, verify it is still a regular file
+with the planned size; if it cannot be opened or this check fails, abort without
+publishing the temporary archive. This check does not provide a filesystem
+snapshot: the program does not lock source files, and same-size content changes
+are not detected. File contents are read during compression, so concurrent
+modifications may result in the bytes observed during the read rather than a
+consistent point-in-time copy.
+
 ## Command line
 
 The `dtar` command must have the flags an option expected for a compression command, as well as a help and version flags. Also, it should be user-friendly: gracefully warn on errors, use a progress bar for the compression task, announce the archive checksum on completion.
