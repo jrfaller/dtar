@@ -49,6 +49,8 @@ behavior; `README.md` documents the supported inputs and CLI.
 
 ## Project-specific invariants
 
+- Keep the root `SPECS.md` authoritative: whenever the program's requirements or
+  specified behavior change, update `SPECS.md` in the same change.
 - Maintain a root-level `CHANGELOG.md` that lists user-visible changes. Update
   it alongside each change, grouping entries under an appropriate version or
   date heading.
