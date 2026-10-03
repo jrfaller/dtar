@@ -11,5 +11,6 @@
 
 - Publish GitHub Releases with target-specific binary packages when a stable
   `vMAJOR.MINOR.PATCH` tag is pushed.
+- Attach a `SHA256SUMS` manifest for release packages.
 - Support repeatable glob patterns for excluding files and directories from
   archives.

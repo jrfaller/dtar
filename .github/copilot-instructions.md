@@ -29,7 +29,9 @@ git push origin v0.0.1
 
 CI verifies and builds all six platform targets before creating the GitHub
 Release with target-specific packages attached (`.tar.gz` for Linux/macOS and
-`.zip` for Windows).
+`.zip` for Windows), plus a `SHA256SUMS` manifest. Users verify downloaded
+packages with `sha256sum --check SHA256SUMS` on Linux or
+`shasum -a 256 -c SHA256SUMS` on macOS.
 
 ## Architecture
 

@@ -114,7 +114,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Prepare release assets and checksums
+        run: |
+          mkdir release-assets
+          for package in artifacts/dtar-*/*; do
+            cp "$package" release-assets/
+          done
+          cd release-assets
+          sha256sum dtar-* | sort -k2 > SHA256SUMS
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" artifacts/dtar-*/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
