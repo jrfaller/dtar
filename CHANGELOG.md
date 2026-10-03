@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-10-04
+
 ### Changed
 
 - Define CLI failure reporting and completion-statistic semantics in the spec.
