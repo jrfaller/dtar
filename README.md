@@ -19,8 +19,9 @@ dtar [OPTIONS] <SOURCE>
 By default, the archive is created next to the source directory as
 `<source-name>.tar.gz`. Use `-o`/`--output` to choose a path, `-f`/`--force` to
 replace an existing archive, and `-q`/`--quiet` to hide the progress bar. On
-success, `dtar` prints the archive's SHA-256 checksum. `--help` and `--version`
-are provided by the CLI.
+success, `dtar` prints the file and directory counts, source and archive sizes,
+elapsed time, and the archive's SHA-256 checksum. `--help` and `--version` are
+provided by the CLI.
 
 ## Build and test
 

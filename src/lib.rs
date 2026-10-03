@@ -4,6 +4,7 @@ use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context, Result};
@@ -25,31 +26,50 @@ enum EntryKind {
     Directory,
 }
 
+/// Summary statistics for a completed archive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveStats {
+    /// Lowercase hexadecimal SHA-256 checksum of the completed archive.
+    pub sha256: String,
+    /// Number of archived regular files.
+    pub files: u64,
+    /// Number of archived directories, excluding the source root.
+    pub directories: u64,
+    /// Total size of the source files before compression, in bytes.
+    pub source_bytes: u64,
+    /// Size of the completed `.tar.gz` archive, in bytes.
+    pub archive_bytes: u64,
+    /// Time from input validation through archive persistence.
+    pub elapsed: Duration,
+}
+
 /// Compresses a directory into a deterministic tar.gz archive.
 ///
 /// Existing output files are preserved. Set `overwrite` to `true` to replace
-/// one atomically. Returns the lowercase hexadecimal SHA-256 checksum.
+/// one atomically. Returns statistics for the completed archive.
 pub fn compress_directory(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
     overwrite: bool,
-) -> Result<String> {
+) -> Result<ArchiveStats> {
     compress_directory_with_progress(source, output, overwrite, |_, _| {})
 }
 
 /// Compresses a directory, reporting completed and total archive entries.
 ///
 /// Entries include directories as well as files. The callback is invoked once
-/// before writing begins and once after each entry is written.
+/// before writing begins and once after each entry is written. Returns
+/// statistics for the completed archive.
 pub fn compress_directory_with_progress<F>(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
     overwrite: bool,
     mut progress: F,
-) -> Result<String>
+) -> Result<ArchiveStats>
 where
     F: FnMut(u64, u64),
 {
+    let started = Instant::now();
     let source = fs::canonicalize(source.as_ref()).with_context(|| {
         format!(
             "cannot access source directory {}",
@@ -77,6 +97,19 @@ where
     let mut entries = collect_entries(&source)?;
     entries.sort_by(|left, right| left.archive_path.cmp(&right.archive_path));
     let total = entries.len() as u64;
+    let files = entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, EntryKind::File))
+        .count() as u64;
+    let directories = entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, EntryKind::Directory))
+        .count() as u64;
+    let source_bytes = entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, EntryKind::File))
+        .try_fold(0_u64, |total, entry| total.checked_add(entry.size))
+        .context("total source file size exceeds the supported range")?;
     progress(0, total);
 
     let parent = output
@@ -147,6 +180,11 @@ where
         .sync_all()
         .context("cannot synchronize completed archive")?;
 
+    let archive_bytes = temporary
+        .as_file()
+        .metadata()
+        .context("cannot inspect completed archive")?
+        .len();
     let checksum = sha256(temporary.as_file_mut()).context("cannot hash completed archive")?;
     if overwrite {
         temporary
@@ -158,7 +196,14 @@ where
             .with_context(|| format!("cannot create output archive {}", output.display()))?;
     }
 
-    Ok(checksum)
+    Ok(ArchiveStats {
+        sha256: checksum,
+        files,
+        directories,
+        source_bytes,
+        archive_bytes,
+        elapsed: started.elapsed(),
+    })
 }
 
 fn collect_entries(root: &Path) -> Result<Vec<Entry>> {

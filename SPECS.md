@@ -53,6 +53,13 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 
 The `dtar` command must have the flags an option expected for a compression command, as well as a help and version flags. Also, it should be user-friendly: gracefully warn on errors, use a progress bar for the compression task, announce the archive checksum on completion.
 
+### Completion Statistics
+
+After a successful compression, the CLI must print the elapsed end-to-end time,
+the number of regular files and directories archived (excluding the source
+root), the total uncompressed file size, the final archive size, and the
+archive's SHA-256 checksum.
+
 ## Verification Criteria (Definition of Done)
 
 The agent must provide a verification test (such as a local integration test) demonstrating that:

@@ -5,6 +5,7 @@
 ### Changed
 
 - License the project under the MIT License.
+- Print compression duration, entry counts, source and archive sizes, and SHA-256.
 
 ### Added
 

@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File},
     io::Read,
+    process::Command,
     time::{Duration, SystemTime},
 };
 
@@ -20,7 +21,7 @@ fn repeated_archives_ignore_mtime_and_filesystem_order() {
     let first = directory.path().join("first.tar.gz");
     let second = directory.path().join("second.tar.gz");
 
-    let first_hash = dtar::compress_directory(&source, &first, false).unwrap();
+    let first_stats = dtar::compress_directory(&source, &first, false).unwrap();
     let old = SystemTime::UNIX_EPOCH + Duration::from_secs(42);
     File::options()
         .write(true)
@@ -28,9 +29,9 @@ fn repeated_archives_ignore_mtime_and_filesystem_order() {
         .unwrap()
         .set_times(std::fs::FileTimes::new().set_modified(old))
         .unwrap();
-    let second_hash = dtar::compress_directory(&source, &second, false).unwrap();
+    let second_stats = dtar::compress_directory(&source, &second, false).unwrap();
 
-    assert_eq!(first_hash, second_hash);
+    assert_eq!(first_stats.sha256, second_stats.sha256);
     assert_eq!(fs::read(first).unwrap(), fs::read(second).unwrap());
 }
 
@@ -43,9 +44,14 @@ fn archive_entries_have_normalized_order_and_metadata() {
     fs::write(source.join("z-dir/z.txt"), b"last").unwrap();
     fs::write(source.join("a-dir/a.txt"), b"first").unwrap();
     let output = directory.path().join("result.tar.gz");
-    dtar::compress_directory(&source, &output, false).unwrap();
+    let stats = dtar::compress_directory(&source, &output, false).unwrap();
+    assert_eq!(stats.files, 2);
+    assert_eq!(stats.directories, 2);
+    assert_eq!(stats.source_bytes, 9);
 
     let bytes = fs::read(&output).unwrap();
+    assert_eq!(stats.archive_bytes, bytes.len() as u64);
+    assert!(!stats.sha256.is_empty());
     assert_eq!(&bytes[4..8], &[0, 0, 0, 0]);
     assert_eq!(bytes[9], 255);
 
@@ -96,4 +102,30 @@ fn existing_output_is_preserved_without_force() {
     let error = dtar::compress_directory(&source, &output, false).unwrap_err();
     assert!(error.to_string().contains("already exists"));
     assert_eq!(fs::read(output).unwrap(), b"keep me");
+}
+
+#[test]
+fn cli_prints_compression_statistics() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("nested")).unwrap();
+    fs::write(source.join("nested/file.txt"), b"hello").unwrap();
+    let output_path = directory.path().join("result.tar.gz");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--quiet", "--output"])
+        .arg(output_path)
+        .arg(source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Files: 1 | Directories: 1\nSource size: 5 bytes | Archive size:"));
+    assert!(stdout.contains("Elapsed:"));
+    assert!(stdout.contains("SHA-256:"));
 }

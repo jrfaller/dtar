@@ -58,7 +58,7 @@ fn run() -> anyhow::Result<()> {
         bar
     };
 
-    let checksum = dtar::compress_directory_with_progress(
+    let stats = dtar::compress_directory_with_progress(
         &args.source,
         &output,
         args.force,
@@ -68,7 +68,16 @@ fn run() -> anyhow::Result<()> {
         },
     )?;
     progress.finish_and_clear();
-    println!("Created {} (SHA-256: {checksum})", output.display());
+    println!("Created {}", output.display());
+    println!(
+        "Files: {} | Directories: {}\nSource size: {} bytes | Archive size: {} bytes\nElapsed: {:?}\nSHA-256: {}",
+        stats.files,
+        stats.directories,
+        stats.source_bytes,
+        stats.archive_bytes,
+        stats.elapsed,
+        stats.sha256
+    );
     Ok(())
 }
 

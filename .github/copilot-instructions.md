@@ -35,13 +35,14 @@ Release with target-specific packages attached (`.tar.gz` for Linux/macOS and
 
 `src/main.rs` defines the `clap` CLI (`dtar <SOURCE>`, with output, overwrite,
 and quiet options), drives an `indicatif` progress bar, calls the library, and
-prints the completed archive's SHA-256.
+prints its completion statistics and SHA-256.
 
 `src/lib.rs` implements the reusable compressor. It canonicalizes and validates
 paths, recursively collects regular files and directories, normalizes and sorts
 archive paths, writes sanitized tar headers through gzip to a temporary file,
-finalizes and hashes that file, then atomically persists it. The progress-aware
-library entry point is shared by the CLI and the no-op-progress API wrapper.
+finalizes and hashes that file, then atomically persists it and returns an
+`ArchiveStats` report. The progress-aware library entry point is shared by the
+CLI and the no-op-progress API wrapper.
 
 `tests/determinism.rs` exercises reproducibility, metadata and entry ordering,
 and protection of an existing output. `SPECS.md` defines the required archive
