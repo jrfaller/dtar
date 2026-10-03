@@ -79,6 +79,24 @@ the number of regular files and directories archived (excluding the source
 root), the total uncompressed file size, the final archive size, and the
 archive's SHA-256 checksum unless quiet mode is enabled.
 
+Statistics must describe only a successfully published archive. The file and
+directory counts exclude the source root; source size is the total byte size of
+the archived regular files; archive size is the final `.tar.gz` size in bytes;
+and the checksum is the lowercase hexadecimal SHA-256 of the complete archive.
+Elapsed time starts with input validation and ends after the archive is
+persisted, including planning, writing, finalization, hashing, and publication,
+but excluding CLI output.
+
+### Failure Behavior
+
+Any validation, source-reading, archive-writing, finalization, hashing, or
+publication failure must cause a non-zero CLI exit status and an error on
+stderr, even in quiet mode. Errors must retain context identifying the failed
+operation and relevant path or input when applicable. Do not report completion
+statistics or a successful archive path on failure. Apply the output safety
+requirements above so failures before publication do not leave a partial
+archive at the requested destination.
+
 ### Quiet Mode
 
 The `--quiet`/`-q` option must suppress the progress bar and successful
