@@ -52,6 +52,8 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 
 ### Output Safety and Failure Handling
 
+The resolved output path must be outside the source directory. If it is inside
+or equal to the source directory, fail before creating or modifying any output.
 The archive must be written to a temporary file in the destination directory and published only after writing, tar/gzip finalization, flushing, synchronization, and checksum calculation all succeed. If any of these operations fails before publication, the requested output path must remain unchanged: an existing archive must be preserved, and a first-time run must not leave a partial archive there. On handled errors, discard the temporary file. The temporary file must be on the same filesystem as the destination so publication can be atomic.
 
 ## Command line

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Specify that the output path must be outside the source directory.
 - Specify and verify that failed archive writes do not publish partial output.
 - License the project under the MIT License.
 - Print compression duration, entry counts, source and archive sizes, and SHA-256.
