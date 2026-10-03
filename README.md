@@ -64,7 +64,8 @@ dtar ./my-project --output ./dist/my-project.tar.gz
 ### `-f, --force`
 
 Replace an existing output archive atomically. Use this when rerunning a
-command that writes to the same output path.
+command that writes to the same output path. The existing archive is kept if
+compression fails; a partial archive is never published at the output path.
 
 ```sh
 dtar ./my-project --output ./dist/my-project.tar.gz --force

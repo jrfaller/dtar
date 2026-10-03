@@ -38,7 +38,7 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 
 ### Implementation Steps for the Agent
 
-1. Initialize Output Stream: Open or create the target output file handle.
+1. Initialize Output Stream: Create a temporary file in the destination directory. Do not write directly to or truncate the requested output path.
 2. Layer the Encoders: Instantiat a flate2::write::GzEncoder linked to the file handle, and wrap it into a tar::Builder.
 3. Collect Entries: Recursively traverse the source directory. Strip the root prefix from each file to compute its relative archive path. Convert backslashes to forward slashes.
 4. Sort Entries: Sort the list of collected entries lexicographically based on their normalized relative path.
@@ -48,6 +48,11 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 	3. Set the exact file size payload attribute.
 	4. Append the structured header and file data payload to the archive stream.
 6. Flush and Finalize: Explicitly invoke the teardown methods for the tar container structure (archive.into_inner()?) and flush the compression stream buffer completely (encoder.finish()?) to guarantee data integrity.
+7. Publish Output: Flush and synchronize the completed temporary archive, calculate its checksum, then publish it at the requested output path. Publish without replacing an existing file by default; `--force` must atomically replace it.
+
+### Output Safety and Failure Handling
+
+The archive must be written to a temporary file in the destination directory and published only after writing, tar/gzip finalization, flushing, synchronization, and checksum calculation all succeed. If any of these operations fails before publication, the requested output path must remain unchanged: an existing archive must be preserved, and a first-time run must not leave a partial archive there. On handled errors, discard the temporary file. The temporary file must be on the same filesystem as the destination so publication can be atomic.
 
 ## Command line
 
@@ -87,3 +92,5 @@ The agent must provide a verification test (such as a local integration test) de
 2. Manually changing a local file's modification time on disk (touch command) and rerunning the compressor still yields an identical SHA-256 hash output.
 3. A dry run prints the included archive tree, respects exclusions, and does not
    create or replace the output file.
+4. A failure after writing has begun does not publish a partial archive, and
+   preserves an existing destination even when replacement was requested.

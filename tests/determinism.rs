@@ -105,6 +105,35 @@ fn existing_output_is_preserved_without_force() {
 }
 
 #[test]
+fn failed_overwrite_preserves_output_and_cleans_temporary_archive() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("a.txt"), b"first").unwrap();
+    let second_file = source.join("b.txt");
+    fs::write(&second_file, b"second").unwrap();
+    let output = directory.path().join("result.tar.gz");
+    fs::write(&output, b"existing archive").unwrap();
+
+    let error = dtar::compress_directory_with_excludes_and_progress(
+        &source,
+        &output,
+        true,
+        &[],
+        |completed, _| {
+            if completed == 1 {
+                fs::remove_file(&second_file).unwrap();
+            }
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("cannot read"));
+    assert_eq!(fs::read(&output).unwrap(), b"existing archive");
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 2);
+}
+
+#[test]
 fn cli_prints_compression_statistics() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");
