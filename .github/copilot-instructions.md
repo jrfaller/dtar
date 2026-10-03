@@ -52,6 +52,9 @@ behavior; `README.md` documents the supported inputs and CLI.
 
 - Keep the root `SPECS.md` authoritative: whenever the program's requirements or
   specified behavior change, update `SPECS.md` in the same change.
+- Keep the root `README.md` usage guidance current: whenever a change affects
+  how users invoke or interact with the program, update `README.md` in the same
+  change.
 - Maintain a root-level `CHANGELOG.md` that lists user-visible changes. Update
   it alongside each change, grouping entries under an appropriate version or
   date heading.
