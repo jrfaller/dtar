@@ -18,6 +18,19 @@ Mixed documentation and code changes still run CI. Use the workflow's
 documentation-only change. Keep both event filters aligned if documentation
 uses additional paths or file extensions.
 
+To publish a release, move the release entries from `Unreleased` in
+`CHANGELOG.md` under the new version/date heading, then tag and push the release
+commit using a stable `vMAJOR.MINOR.PATCH` tag:
+
+```sh
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+CI verifies and builds all six platform targets before creating the GitHub
+Release with target-specific packages attached (`.tar.gz` for Linux/macOS and
+`.zip` for Windows).
+
 ## Architecture
 
 `src/main.rs` defines the `clap` CLI (`dtar <SOURCE>`, with output, overwrite,

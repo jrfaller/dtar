@@ -28,3 +28,14 @@ are provided by the CLI.
 cargo build --release
 cargo test
 ```
+
+## Releases
+
+Push a stable `vMAJOR.MINOR.PATCH` tag to run CI and publish a GitHub Release
+with packages for Linux, macOS, and Windows on x86_64 and ARM64. Unix packages
+are `.tar.gz` archives; Windows packages are `.zip` files.
+
+```sh
+git tag v0.0.1
+git push origin v0.0.1
+```

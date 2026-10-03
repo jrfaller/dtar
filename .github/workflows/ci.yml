@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -26,6 +28,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Validate version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tags must use vMAJOR.MINOR.PATCH, for example v0.0.1"
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -46,21 +57,27 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             binary: dtar
+            archive: tar.gz
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
             binary: dtar
+            archive: tar.gz
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             binary: dtar
+            archive: tar.gz
           - target: aarch64-apple-darwin
             runner: macos-15
             binary: dtar
+            archive: tar.gz
           - target: x86_64-pc-windows-msvc
             runner: windows-2025
             binary: dtar.exe
+            archive: zip
           - target: aarch64-pc-windows-msvc
             runner: windows-11-arm
             binary: dtar.exe
+            archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -71,10 +88,33 @@ jobs:
         run: cargo test --locked --target ${{ matrix.target }}
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
+        run: tar -C target/${{ matrix.target }}/release -czf dtar-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.binary }} -DestinationPath dtar-${{ matrix.target }}.zip
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: dtar-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: dtar-${{ matrix.target }}.${{ matrix.archive }}
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/dtar-*/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
