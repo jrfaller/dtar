@@ -39,3 +39,8 @@ are `.tar.gz` archives; Windows packages are `.zip` files.
 git tag v0.0.1
 git push origin v0.0.1
 ```
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for the
+full text.
