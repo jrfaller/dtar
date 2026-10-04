@@ -2,7 +2,13 @@
 
 ## Objective
 
-Build a command-line tool or library module in Rust that compresses one or more files or directories into a .tar.gz archive. The output file must be 100% deterministic (reproducible). Running this utility on the same input paths and contents must always yield a byte-for-byte identical output file with an identical cryptographic checksum (e.g., SHA-256), regardless of the host operating system, filesystem state, user context, or execution timestamp.
+Build a command-line tool or library module in Rust that compresses one or more
+files or directories into a .tar.gz archive. The output file must be 100%
+deterministic (reproducible). Running this utility on the same input paths,
+contents, and normalized executable status must always yield a byte-for-byte
+identical output file with an identical cryptographic checksum (e.g., SHA-256),
+regardless of the host operating system, filesystem state, user context, or
+execution timestamp.
 
 ## Core Dependencies
 
@@ -28,7 +34,10 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 - Modification Time (mtime): Must be hardcoded to 0 (representing the Unix Epoch: January 1, 1970, 00:00:00 UTC).
 - User ID (uid) & Group ID (gid): Must be hardcoded to 0.
 - User Name & Group Name: Must be cleared or left empty.
-- File Permissions (mode): Must be normalized to a fixed permission bitmask (e.g., 0o644 for regular files, 0o755 for directories or executable files). Do not inherit permissions from the host filesystem.
+- File Permissions (mode): Directories must use 0o755. Regular files must use
+  0o755 if the source has any executable bit set, and 0o644 otherwise. Ignore
+  all other source permission bits. On platforms whose metadata does not expose
+  Unix executable bits, use 0o644 for regular files.
 
 ###  Gzip Compression Layer
 
@@ -59,15 +68,16 @@ The archive must be written to a temporary file in the destination directory and
 
 ### Source Changes During Compression
 
-Collect and sort the archive plan, including each regular file's size, before
-writing begins. Entries added after planning are not included. When each
-planned regular file is opened for writing, verify it is still a regular file
-with the planned size; if it cannot be opened or this check fails, abort without
-publishing the temporary archive. This check does not provide a filesystem
-snapshot: the program does not lock source files, and same-size content changes
-are not detected. File contents are read during compression, so concurrent
-modifications may result in the bytes observed during the read rather than a
-consistent point-in-time copy.
+Collect and sort the archive plan, including each regular file's size and
+whether it is executable, before writing begins. Entries added after planning
+are not included. When each planned regular file is opened for writing, verify
+it is still a regular file with the planned size; if it cannot be opened or
+this check fails, abort without publishing the temporary archive. This check
+does not provide a filesystem snapshot: the program does not lock source files,
+and same-size content changes are not detected. File contents are read during
+compression, so concurrent modifications may result in the bytes observed
+during the read rather than a consistent point-in-time copy. A permission change
+after planning does not change the mode already recorded in the archive plan.
 
 ## Command line
 

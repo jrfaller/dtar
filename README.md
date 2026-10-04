@@ -2,17 +2,23 @@
 
 `dtar` creates reproducible `.tar.gz` archives from one or more files and
 directories. File and directory entries are sorted by normalized archive path;
-tar timestamps, owners, names, and permissions are fixed, and the gzip timestamp
-and operating system fields are normalized. Compression uses the Rust DEFLATE
-backend and a fixed best-compression profile.
+tar timestamps, owners, and names are fixed, while permissions are normalized
+and executable status is preserved where the source filesystem exposes it. The
+gzip timestamp and operating system fields are normalized. Compression uses the
+Rust DEFLATE backend and a fixed best-compression profile.
 
 ## Why deterministic archives?
 
 Ordinary archive tools can produce different bytes for the same file contents
 because timestamps, ownership, permissions, or filesystem traversal order
 changed. `dtar` normalizes these details so that archiving the same supported
-input paths and contents with the same tool version and options produces the same
-archive bytes and SHA-256 checksum.
+input paths, contents, and executable status with the same tool version and
+options produces the same archive bytes and SHA-256 checksum.
+
+Regular files with any executable bit set are archived with mode `0o755`;
+other regular files use `0o644`, and directories use `0o755`. Other source
+permission bits are ignored. On filesystems that do not expose an executable
+bit through file permissions, regular files use `0o644`.
 
 This is useful for:
 

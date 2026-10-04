@@ -91,6 +91,28 @@ fn archive_entries_have_normalized_order_and_metadata() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn executable_bit_is_preserved_in_archive_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir(&source).unwrap();
+    let executable = source.join("run.sh");
+    fs::write(&executable, b"#!/bin/sh\n").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    let output = directory.path().join("result.tar.gz");
+
+    dtar::compress_directory(&source, &output, false).unwrap();
+
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let entry = archive.entries().unwrap().next().unwrap().unwrap();
+    assert_eq!(entry.path().unwrap().to_string_lossy(), "run.sh");
+    assert_eq!(entry.header().mode().unwrap(), 0o755);
+}
+
 #[test]
 fn multiple_sources_archive_under_their_basenames() {
     let directory = tempdir().unwrap();

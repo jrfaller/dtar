@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Preserve executable status in archive modes where the source filesystem
+  exposes it.
+
 ### Changed
 
 - Match exclude patterns with Gitignore-style path semantics: slashless

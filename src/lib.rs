@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use anyhow::{bail, Context, Result};
 use flate2::{Compression, GzBuilder};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
@@ -19,6 +22,7 @@ struct Entry {
     source: PathBuf,
     archive_path: String,
     kind: ArchiveEntryKind,
+    mode: u32,
     size: u64,
 }
 
@@ -246,10 +250,7 @@ where
         header.set_gid(0);
         header.set_username("")?;
         header.set_groupname("")?;
-        header.set_mode(match entry.kind {
-            ArchiveEntryKind::File => 0o644,
-            ArchiveEntryKind::Directory => 0o755,
-        });
+        header.set_mode(entry.mode);
         header.set_size(entry.size);
         header.set_entry_type(match entry.kind {
             ArchiveEntryKind::File => EntryType::Regular,
@@ -434,6 +435,7 @@ pub fn plan_sources(
                     source: source.path,
                     archive_path,
                     kind: ArchiveEntryKind::File,
+                    mode: normalized_file_mode(&metadata),
                     size: metadata.len(),
                 });
             }
@@ -509,6 +511,7 @@ fn collect_directory_entries(
             source: root.to_path_buf(),
             archive_path: archive_path.to_owned(),
             kind: ArchiveEntryKind::Directory,
+            mode: 0o755,
             size: 0,
         });
     }
@@ -546,6 +549,7 @@ fn collect_directory_entries(
                     source: path.clone(),
                     archive_path,
                     kind: ArchiveEntryKind::Directory,
+                    mode: 0o755,
                     size: 0,
                 });
                 pending.push(path);
@@ -554,6 +558,7 @@ fn collect_directory_entries(
                     source: path,
                     archive_path,
                     kind: ArchiveEntryKind::File,
+                    mode: normalized_file_mode(&metadata),
                     size: metadata.len(),
                 });
             } else {
@@ -563,6 +568,20 @@ fn collect_directory_entries(
     }
 
     Ok(entries)
+}
+
+#[cfg(unix)]
+fn normalized_file_mode(metadata: &fs::Metadata) -> u32 {
+    if metadata.permissions().mode() & 0o111 != 0 {
+        0o755
+    } else {
+        0o644
+    }
+}
+
+#[cfg(not(unix))]
+fn normalized_file_mode(_: &fs::Metadata) -> u32 {
+    0o644
 }
 
 fn normalize_path(path: &Path) -> Result<String> {
