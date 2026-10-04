@@ -49,24 +49,17 @@ Rust DEFLATE backend with a fixed best-compression profile. Given the same
 inputs, `dtar` version, and options, repeated runs produce the same archive
 bytes and SHA-256 checksum.
 
-## When is `dtar` useful?
-
-- **Builds:** with the same files, paths, and `dtar` settings, the archive
-  bytes stay identical even if timestamps or directory listing order differ.
-  A build cache can then reuse the archive instead of treating those
-  irrelevant changes as new output.
-- **Reproducing a release:** rebuild an archive from the same files and paths,
-  then compare its SHA-256 with the project's trusted published checksum. A
-  match confirms the archive bytes are identical; you must trust the source of
-  the published checksum.
-- **Storage and version control:** stable hashes help identify and deduplicate
-  unchanged backups, while rerunning an archive command avoids timestamp-only
-  changes to generated archives tracked in Git.
-
-The tool archives regular files and directories. Symbolic links and other
+`dtar` archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
 must be valid UTF-8. The output archive must be outside all input directories
 and must not replace an input file.
+
+## When is `dtar` useful?
+
+- **Reliable Checksum Verification:** By stripping out or normalizing variable metadata (like timestamps and ownership IDs), the resulting archive has a predictable hash (such as MD5 or SHA-256). This allows systems to verify file equality instantly by comparing hashes rather than unpacking and inspecting contents.
+- **CI/CD Optimization:** In automated pipelines (like building deployments or container layers), deterministic archives prevent storage systems or synchronization tools (like rsync) from treating an unchanged bundle as "new" just because a timestamp or build time changed, avoiding redundant uploads and saves.
+- **Reproducible Builds and Supply Chain Security:** In safety-critical or open-source software distribution, independent third parties can compile or package code and check whether their binary output matches the official release bit-for-bit. This proves the archive wasn't tampered with and matches the audited source code.
+- **Clean Version Control and Diffing:** When archives are tracked in repositories or distributed across networks, eliminating random noise ensures cleaner diffs and prevents unnecessary churn in version control history.
 
 ## AI Disclosure & Co-Development Notice
 
