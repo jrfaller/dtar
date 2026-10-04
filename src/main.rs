@@ -13,6 +13,23 @@ use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use tempfile::NamedTempFile;
 
+const OS_ARTIFACT_EXCLUDES: &[&str] = &[
+    ".DS_Store",
+    "._*",
+    ".Spotlight-V100",
+    ".fseventsd",
+    ".Trashes",
+    ".TemporaryItems",
+    "Thumbs.db",
+    "ehthumbs.db",
+    "desktop.ini",
+    "$RECYCLE.BIN",
+    "System Volume Information",
+    ".directory",
+    ".Trash-*",
+    "lost+found",
+];
+
 #[derive(Debug, Parser)]
 #[command(
     name = "dtar",
@@ -39,6 +56,10 @@ struct Args {
     /// Exclude paths matching this glob; slashless patterns match at any depth
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
+
+    /// Exclude common OS-generated metadata and system folders
+    #[arg(long)]
+    exclude_os_artifacts: bool,
 
     /// Print the archive tree without creating an archive
     #[arg(long)]
@@ -70,13 +91,21 @@ fn run() -> anyhow::Result<()> {
     let output = args
         .output
         .unwrap_or_else(|| default_output_path(&args.sources[0]));
+    let mut exclude_patterns = args.exclude.clone();
+    if args.exclude_os_artifacts {
+        exclude_patterns.extend(
+            OS_ARTIFACT_EXCLUDES
+                .iter()
+                .map(|pattern| (*pattern).to_owned()),
+        );
+    }
 
     let plan = if args.dry_run || args.checksum {
         Some(dtar::plan_sources(
             &args.sources,
             &output,
             args.force,
-            &args.exclude,
+            &exclude_patterns,
         )?)
     } else {
         None
@@ -142,7 +171,7 @@ fn run() -> anyhow::Result<()> {
         &args.sources,
         &output,
         args.force,
-        &args.exclude,
+        &exclude_patterns,
         |completed, total| {
             progress.set_length(total);
             progress.set_position(completed);

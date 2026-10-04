@@ -12,6 +12,8 @@
 
 ### Added
 
+- Add the opt-in `--exclude-os-artifacts` preset for common OS metadata and
+  system folders.
 - Preserve executable status in archive modes where the source filesystem
   exposes it.
 

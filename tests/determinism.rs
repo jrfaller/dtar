@@ -478,6 +478,89 @@ fn dry_run_prints_excluded_archive_tree_without_creating_output() {
 }
 
 #[test]
+fn cli_excludes_os_artifacts_in_dry_run_and_archive() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("ordinary")).unwrap();
+    fs::write(source.join("ordinary/keep.txt"), b"keep").unwrap();
+    let artifacts = [
+        ".DS_Store",
+        "._resource",
+        ".Spotlight-V100/index.plist",
+        ".fseventsd/log",
+        ".Trashes/deleted.txt",
+        ".TemporaryItems/temp",
+        "Thumbs.db",
+        "ehthumbs.db",
+        "desktop.ini",
+        "$RECYCLE.BIN/deleted.txt",
+        "System Volume Information/index.dat",
+        ".directory",
+        ".Trash-1000/deleted.txt",
+        "lost+found/recovered.txt",
+        "ordinary/skip.tmp",
+    ];
+    for artifact in artifacts {
+        let path = source.join(artifact);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, b"excluded").unwrap();
+    }
+    let output_path = directory.path().join("result.tar.gz");
+
+    let preview = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--dry-run", "--exclude-os-artifacts", "--output"])
+        .arg(&output_path)
+        .args(["--exclude", "*.tmp"])
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(
+        preview.status.success(),
+        "dtar dry run failed: {}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let stdout = String::from_utf8(preview.stdout).unwrap();
+    assert!(stdout.contains("ordinary/"));
+    assert!(stdout.contains("keep.txt"));
+    assert!(!stdout.contains("DS_Store"));
+    assert!(!stdout.contains("Thumbs.db"));
+    assert!(!stdout.contains("RECYCLE.BIN"));
+    assert!(!stdout.contains("lost+found"));
+    assert!(!stdout.contains("skip.tmp"));
+    assert!(!output_path.exists());
+
+    let archive_result = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--exclude-os-artifacts", "--output"])
+        .arg(&output_path)
+        .args(["--exclude", "*.tmp"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        archive_result.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&archive_result.stderr)
+    );
+
+    let decoder = GzDecoder::new(File::open(output_path).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["ordinary", "ordinary/keep.txt"]);
+}
+
+#[test]
 fn cli_archives_multiple_file_and_directory_sources() {
     let directory = tempdir().unwrap();
     let code = directory.path().join("code");

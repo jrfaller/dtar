@@ -161,6 +161,21 @@ dtar ./my-project \
 Here, `temp/*.tmp` matches `.tmp` files directly inside the root-level
 `temp/` directory, while `*.tmp` matches `.tmp` files at any depth.
 
+### `--exclude-os-artifacts`
+
+Exclude common OS-generated metadata and system folders. The preset matches
+these names at any depth: `.DS_Store`, `._*`, `.Spotlight-V100`, `.fseventsd`,
+`.Trashes`, `.TemporaryItems`, `Thumbs.db`, `ehthumbs.db`, `desktop.ini`,
+`$RECYCLE.BIN`, `System Volume Information`, `.directory`, `.Trash-*`, and
+`lost+found`. Matching directories and their contents are omitted. This option
+is opt-in; use `--exclude` for additional patterns. Some excluded folders can
+contain user-specific or recoverable data, so review the list before archiving
+general-purpose filesystems.
+
+```sh
+dtar ./my-project --exclude-os-artifacts
+```
+
 ### `--dry-run`
 
 Validate all source paths, the output path, and exclusions, then print a tree of
@@ -173,6 +188,7 @@ file will remain untouched. If combined with `--quiet`, the tree is hidden.
 dtar \
   --dry-run \
   --output ./dist/my-project.tar.gz \
+  --exclude-os-artifacts \
   --exclude .git \
   --exclude '*.tmp' \
   ./my-project \
@@ -216,6 +232,7 @@ dtar ./my-project \
   --output ./dist/my-project.tar.gz \
   --checksum \
   --force \
+  --exclude-os-artifacts \
   --exclude .git \
   --exclude target \
   --exclude '*.tmp'

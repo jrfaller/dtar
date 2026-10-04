@@ -145,6 +145,15 @@ match `/`; `**` may match across directory separators. An excluded directory
 and its descendants must be omitted; there are no implicit exclusions.
 Invalid patterns must produce an error rather than being ignored.
 
+The CLI must also accept `--exclude-os-artifacts`, which adds these patterns to
+the user-supplied exclusions: `.DS_Store`, `._*`, `.Spotlight-V100`,
+`.fseventsd`, `.Trashes`, `.TemporaryItems`, `Thumbs.db`, `ehthumbs.db`,
+`desktop.ini`, `$RECYCLE.BIN`, `System Volume Information`, `.directory`,
+`.Trash-*`, and `lost+found`. These slashless patterns match at any depth under
+the same glob rules as `--exclude`; matching directories and their descendants
+are omitted. The option is opt-in, and its patterns must be applied identically
+to archive planning, dry-run previews, and compression.
+
 ### Dry Run
 
 The `--dry-run` option must validate all source paths, the destination, and
