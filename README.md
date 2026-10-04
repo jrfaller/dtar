@@ -3,10 +3,6 @@
 `dtar` turns files and directories into `.tar.gz` archives with normalized
 metadata and compression, so the same inputs produce the same archive bytes.
 
-## AI Disclosure & Co-Development Notice
-
-This project is developed using autonomous Artificial Intelligence (AI) agents.
-
 ## Why aren't `.tar.gz` files reproducible by default?
 
 A `.tar.gz` file is two formats layered together: a **tar archive** containing
@@ -71,6 +67,10 @@ The tool archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
 must be valid UTF-8. The output archive must be outside all input directories
 and must not replace an input file.
+
+## AI Disclosure & Co-Development Notice
+
+This project is developed using autonomous Artificial Intelligence (AI) agents.
 
 ## Usage
 
