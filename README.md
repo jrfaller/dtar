@@ -109,16 +109,22 @@ On macOS, use `shasum -a 256 -c SHA256SUMS` instead.
 ### `-e, --exclude <PATTERN>`
 
 Exclude archive-relative paths matching a glob. This option can be repeated.
-Patterns use `/` separators, and `*` can match across directory boundaries.
-When a directory matches, it and its entire subtree are omitted. Nothing is
-excluded by default.
+Patterns without `/` match files or directories with that name at any depth,
+so `.DS_Store` excludes nested matches. Patterns containing `/` are relative to
+the archive root. `*` and `?` do not match `/`; use `**` to match across
+directory levels. When a directory matches, it and its entire subtree are
+omitted. Nothing is excluded by default.
 
 ```sh
 dtar ./my-project \
   --exclude .git \
   --exclude target \
+  --exclude 'temp/*.tmp' \
   --exclude '*.tmp'
 ```
+
+Here, `temp/*.tmp` matches `.tmp` files directly inside the root-level
+`temp/` directory, while `*.tmp` matches `.tmp` files at any depth.
 
 ### `--dry-run`
 

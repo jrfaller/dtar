@@ -36,7 +36,7 @@ struct Args {
     #[arg(long)]
     checksum: bool,
 
-    /// Exclude archive-relative paths matching this glob (repeatable)
+    /// Exclude paths matching this glob; slashless patterns match at any depth
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
 

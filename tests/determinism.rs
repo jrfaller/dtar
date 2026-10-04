@@ -648,3 +648,52 @@ fn exclude_patterns_skip_files_and_prune_directories() {
     .unwrap_err();
     assert!(error.to_string().contains("invalid exclude pattern"));
 }
+
+#[test]
+fn exclude_patterns_use_gitignore_style_path_matching() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("temp/deep")).unwrap();
+    fs::create_dir_all(source.join("logs/nested")).unwrap();
+    fs::write(source.join(".DS_Store"), b"ignored").unwrap();
+    fs::write(source.join("temp/.DS_Store"), b"ignored").unwrap();
+    fs::write(source.join("temp/deep/.DS_Store"), b"ignored").unwrap();
+    fs::write(source.join("temp/drop.tmp"), b"ignored").unwrap();
+    fs::write(source.join("temp/deep/keep.tmp"), b"kept").unwrap();
+    fs::write(source.join("logs/error.log"), b"ignored").unwrap();
+    fs::write(source.join("logs/nested/error.log"), b"ignored").unwrap();
+    let output = directory.path().join("filtered.tar.gz");
+    let excludes = vec![
+        ".DS_Store".to_owned(),
+        "temp/*.tmp".to_owned(),
+        "logs/**/*.log".to_owned(),
+    ];
+
+    let stats = dtar::compress_directory_with_excludes(&source, &output, false, &excludes).unwrap();
+
+    assert_eq!(stats.files, 1);
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        [
+            "logs",
+            "logs/nested",
+            "temp",
+            "temp/deep",
+            "temp/deep/keep.tmp"
+        ]
+    );
+}

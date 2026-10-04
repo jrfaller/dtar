@@ -129,9 +129,11 @@ without creating or replacing it.
 
 The CLI must accept repeatable `--exclude PATTERN` options. Patterns must be
 valid globs matched against normalized archive-relative paths using `/`
-separators. Wildcards may match across directory separators. An excluded
-directory and its descendants must be omitted; there are no implicit
-exclusions. Invalid patterns must produce an error rather than being ignored.
+separators. A pattern without `/` matches a path component at any depth; a
+pattern containing `/` is relative to the archive root. `*` and `?` do not
+match `/`; `**` may match across directory separators. An excluded directory
+and its descendants must be omitted; there are no implicit exclusions.
+Invalid patterns must produce an error rather than being ignored.
 
 ### Dry Run
 

@@ -98,9 +98,10 @@ pub fn compress_directory(
 
 /// Compresses a directory while excluding entries matching any glob pattern.
 ///
-/// Patterns match archive-relative paths using `/` separators. A matching
-/// directory and its contents are omitted. Returns statistics for the
-/// completed archive.
+/// Patterns match archive-relative paths using `/` separators. Patterns
+/// without `/` match path components at any depth; `*` does not match `/`, but
+/// `**` does. A matching directory and its contents are omitted. Returns
+/// statistics for the completed archive.
 pub fn compress_directory_with_excludes(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
@@ -135,9 +136,11 @@ where
 
 /// Compresses a directory with glob exclusions and progress reporting.
 ///
-/// Patterns match archive-relative paths using `/` separators. A matching
-/// directory and its contents are omitted. The callback is invoked once before
-/// writing begins and once after each included entry is written.
+/// Patterns match archive-relative paths using `/` separators. Patterns
+/// without `/` match path components at any depth; `*` does not match `/`, but
+/// `**` does. A matching directory and its contents are omitted. The callback
+/// is invoked once before writing begins and once after each included entry is
+/// written.
 pub fn compress_directory_with_excludes_and_progress<F>(
     source: impl AsRef<Path>,
     output: impl AsRef<Path>,
@@ -171,7 +174,9 @@ pub fn compress_sources(
 }
 
 /// Compresses one or more files and directories while excluding entries
-/// matching archive-relative glob patterns.
+/// matching archive-relative glob patterns. Patterns without `/` match path
+/// components at any depth; patterns containing `/` are relative to the
+/// archive root.
 pub fn compress_sources_with_excludes(
     sources: &[PathBuf],
     output: impl AsRef<Path>,
@@ -189,7 +194,9 @@ pub fn compress_sources_with_excludes(
 
 /// Compresses one or more files and directories with exclusions and progress
 /// reporting. A single directory retains the directory-only layout; with
-/// multiple inputs, each input is stored under its basename.
+/// multiple inputs, each input is stored under its basename. Patterns without
+/// `/` match path components at any depth; patterns containing `/` are
+/// relative to the archive root. `*` and `?` do not match `/`, but `**` does.
 pub fn compress_sources_with_excludes_and_progress<F>(
     sources: &[PathBuf],
     output: impl AsRef<Path>,
@@ -327,8 +334,13 @@ fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
             bail!("exclude patterns must be archive-relative and use '/' separators: {pattern:?}");
         }
 
-        let glob = GlobBuilder::new(pattern)
-            .literal_separator(false)
+        let glob_pattern = if pattern.contains('/') {
+            pattern.clone()
+        } else {
+            format!("**/{pattern}")
+        };
+        let glob = GlobBuilder::new(&glob_pattern)
+            .literal_separator(true)
             .build()
             .with_context(|| format!("invalid exclude pattern {pattern:?}"))?;
         builder.add(glob);

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Match exclude patterns with Gitignore-style path semantics: slashless
+  patterns match at any depth, while `*` no longer crosses `/`.
+
 ## 0.1.0 - 2026-10-04
 
 ### Changed
