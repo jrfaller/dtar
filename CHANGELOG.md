@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Upgrade GitHub Actions checkout and artifact actions to their latest major
+  versions.
+
 ## 0.2.0 - 2026-10-04
 
 ### Changed
