@@ -245,33 +245,33 @@ dtar ./my-project \
 Unless `--quiet` is set, successful compression prints the file and directory
 counts, source and archive sizes, elapsed time, and archive SHA-256 checksum.
 
-## Build and test
+## Installation
+
+Download the package matching your operating system and processor architecture
+from the [GitHub Releases](https://github.com/jrfaller/dtar/releases) page.
+Linux and macOS packages are `.tar.gz` archives; Windows packages are `.zip`
+files. Download `SHA256SUMS` as well, and place it beside the package.
+
+Verify the package checksum before extracting it. Replace the example package
+name with the one you downloaded:
 
 ```sh
-cargo build --release
-cargo test
+grep 'dtar-aarch64-apple-darwin.tar.gz' SHA256SUMS | shasum -a 256 -c -
 ```
 
-## Releases
+On Linux, use `sha256sum --check -` instead of `shasum -a 256 -c -`.
+After verification, extract the package and run the `dtar` executable from the
+extracted directory, or place it in a directory on your `PATH`.
 
-Push a stable `vMAJOR.MINOR.PATCH` tag to run CI and publish a GitHub Release
-with packages for Linux, macOS, and Windows on x86_64 and ARM64. Unix packages
-are `.tar.gz` archives; Windows packages are `.zip` files. Each release also
-includes `SHA256SUMS` to verify the packages.
+The macOS release binaries are not signed or notarized, so Gatekeeper may block
+them with a warning that Apple cannot verify `dtar`. After verifying the
+checksum and extracting the package, remove the quarantine attribute from the
+binary before running it:
 
 ```sh
-git tag v0.0.1
-git push origin v0.0.1
+xattr -d com.apple.quarantine ./dtar
+./dtar --help
 ```
-
-After downloading the manifest and packages into one directory, verify them
-with:
-
-```sh
-sha256sum --check SHA256SUMS
-```
-
-On macOS, use `shasum -a 256 -c SHA256SUMS` instead.
 
 ## License
 
