@@ -2,15 +2,18 @@
 
 ## Unreleased
 
+### Changed
+
+- Add a concise `dtar` overview, explain why `.tar.gz` archives vary by default
+  and why post-processing alone does not guarantee portable reproducibility,
+  and group the tool's use cases in a dedicated section.
+- Match exclude patterns with Gitignore-style path semantics: slashless
+  patterns match at any depth, while `*` no longer crosses `/`.
+
 ### Added
 
 - Preserve executable status in archive modes where the source filesystem
   exposes it.
-
-### Changed
-
-- Match exclude patterns with Gitignore-style path semantics: slashless
-  patterns match at any depth, while `*` no longer crosses `/`.
 
 ## 0.1.0 - 2026-10-04
 

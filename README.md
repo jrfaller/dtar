@@ -1,38 +1,67 @@
 # dtar
 
-`dtar` creates reproducible `.tar.gz` archives from one or more files and
-directories. File and directory entries are sorted by normalized archive path;
-tar timestamps, owners, and names are fixed, while permissions are normalized
-and executable status is preserved where the source filesystem exposes it. The
-gzip timestamp and operating system fields are normalized. Compression uses the
-Rust DEFLATE backend and a fixed best-compression profile.
+`dtar` turns files and directories into `.tar.gz` archives with normalized
+metadata and compression, so the same inputs produce the same archive bytes.
 
-## Why deterministic archives?
+## Why aren't `.tar.gz` files reproducible by default?
 
-Ordinary archive tools can produce different bytes for the same file contents
-because timestamps, ownership, permissions, or filesystem traversal order
-changed. `dtar` normalizes these details so that archiving the same supported
-input paths, contents, and executable status with the same tool version and
-options produces the same archive bytes and SHA-256 checksum.
+A `.tar.gz` file is two formats layered together: a **tar archive** containing
+the files, wrapped in a **gzip stream** that compresses the tar bytes. The files
+you extract can be identical while the archive's bytes differ, because both
+layers can record choices that were incidental to creating the archive.
 
-Regular files with any executable bit set are archived with mode `0o755`;
-other regular files use `0o644`, and directories use `0o755`. Other source
-permission bits are ignored. On filesystems that do not expose an executable
-bit through file permissions, regular files use `0o644`.
+The tar layer stores more than file contents. Each entry has a path and
+metadata, including modification time, permissions, and ownership. Directory
+traversal order can vary between filesystems or runs, and tools can choose
+different path layouts or tar header formats. As a result, two archives of the
+same files may have different entry order, timestamps, owners, modes, or header
+bytes.
 
-This is useful for:
+Gzip adds another source of variation. Its header can include a timestamp,
+original filename, and platform marker. Even with those fields normalized,
+different compression levels, strategies, or compressor implementations and
+versions can encode the same tar data into different valid DEFLATE byte
+streams. Reproducibility means matching the complete bytes—not merely being
+able to extract the same files—so a checksum changes if any of these choices
+change.
 
-- **Build pipelines and caches:** identical inputs produce identical artifacts,
-  avoiding cache misses and unnecessary rebuilds.
-- **Releases and mirrors:** compare checksums to confirm that independently
-  produced or copied packages are byte-for-byte identical.
-- **Backups and content-addressed storage:** stable hashes make unchanged
-  snapshots easier to identify and deduplicate.
-- **Git-tracked archives:** identical reruns leave the committed archive
-  unchanged, avoiding timestamp-only diffs and allowing Git to reuse its blob.
-- **Reproducible packaging:** rerun packaging and compare the result against a
-  checksum from a trusted source. A checksum alone does not authenticate an
-  archive; use a trusted or signed checksum when authenticity matters.
+## Why not just run `strip_nondeterminism`?
+
+Tools such as `strip_nondeterminism` can normalize known sources of variation
+in archive formats they support, and they are useful in packaging workflows.
+But a post-processing command is not a universal portability guarantee. Its
+coverage and behavior depend on the archive format and tool version; it cannot
+decide every project's intended path layout, file selection, or permission
+policy. Nor does normalizing metadata alone ensure that different compressors
+or versions emit the same DEFLATE stream. A portable reproducible build must
+control the archive contents and ordering, the metadata policy, and the
+compression settings and implementation—not just remove a few timestamps
+afterward.
+
+## How `dtar` makes archives reproducible
+
+`dtar` controls those choices while creating the archive: it sorts entries by
+normalized archive path, fixes tar timestamps and ownership, and normalizes
+file modes: executable regular files and directories use `0o755`, while other
+regular files use `0o644`. On filesystems that do not expose executable status,
+regular files use `0o644`. It also normalizes gzip header fields and uses the
+Rust DEFLATE backend with a fixed best-compression profile. Given the same
+inputs, `dtar` version, and options, repeated runs produce the same archive
+bytes and SHA-256 checksum.
+
+## When is `dtar` useful?
+
+- **Builds:** with the same files, paths, and `dtar` settings, the archive
+  bytes stay identical even if timestamps or directory listing order differ.
+  A build cache can then reuse the archive instead of treating those
+  irrelevant changes as new output.
+- **Reproducing a release:** rebuild an archive from the same files and paths,
+  then compare its SHA-256 with the project's trusted published checksum. A
+  match confirms the archive bytes are identical; you must trust the source of
+  the published checksum.
+- **Storage and version control:** stable hashes help identify and deduplicate
+  unchanged backups, while rerunning an archive command avoids timestamp-only
+  changes to generated archives tracked in Git.
 
 The tool archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
