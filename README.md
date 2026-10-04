@@ -1,4 +1,4 @@
-# dtar
+# dtar 📦
 
 `dtar` turns files and directories into `.tar.gz` archives with normalized
 metadata and compression, so the same inputs produce the same archive bytes.
