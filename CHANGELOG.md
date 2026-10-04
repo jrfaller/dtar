@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-04
+
 ### Changed
 
 - Add a concise `dtar` overview, explain why `.tar.gz` archives vary by default
