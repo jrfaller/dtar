@@ -53,7 +53,8 @@ authoritative and may exceed USTAR path limits.
 
 - Problem: The Gzip format standard specifies a 4-byte timestamp header field that reflects the creation time by default.
 - Requirement: The flate2 encoder must be configured to suppress or zero out the Gzip header timestamp (equivalent to gzip -n). Note: The default flate2 GzEncoder configuration satisfies this by omitting the metadata header unless explicitly added.
-- Compression Level: The compression configuration must be locked to a specific profile (e.g., Compression::best() or Compression::new(9)) to ensure the DEFLATE bitstream mapping remains uniform across iterations.
+- Backend: Configure flate2 with its `rust_backend` feature and disable default features, so compression uses the portable Rust implementation rather than a host-provided Zlib library. Keep flate2 and its transitive compressor versions fixed through the lockfile for byte-level reproducibility; choosing a fixed compression profile alone does not guarantee identical DEFLATE output across implementations or versions.
+- Compression Level: The compression configuration must be locked to a specific profile (e.g., Compression::best() or Compression::new(9)) to keep compression settings uniform across iterations.
 
 ### Implementation Steps for the Agent
 

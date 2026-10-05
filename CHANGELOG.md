@@ -8,6 +8,8 @@
   versions.
 - Use deterministic PAX extended headers for archive paths and metadata,
   followed by USTAR entry headers.
+- Specify the portable Rust DEFLATE backend and locked compressor versions in
+  the reproducibility requirements.
 
 ## 0.2.0 - 2026-10-04
 
