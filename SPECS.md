@@ -39,11 +39,15 @@ authoritative and may exceed USTAR path limits.
 
 - Modification Time (mtime): Must be hardcoded to 0 (representing the Unix Epoch: January 1, 1970, 00:00:00 UTC).
 - User ID (uid) & Group ID (gid): Must be hardcoded to 0.
+- Device major and minor numbers must be 0; they are unused because only
+  regular files and directories are supported.
 - User Name & Group Name: Must be cleared or left empty.
 - File Permissions (mode): Directories must use 0o755. Regular files must use
   0o755 if the source has any executable bit set, and 0o644 otherwise. Ignore
   all other source permission bits. On platforms whose metadata does not expose
   Unix executable bits, use 0o644 for regular files.
+- Extended attributes and access-control lists (ACLs) are not preserved and
+  must not be written as PAX metadata.
 
 ###  Gzip Compression Layer
 
