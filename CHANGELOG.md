@@ -10,6 +10,11 @@
   followed by USTAR entry headers.
 - Specify the portable Rust DEFLATE backend and locked compressor versions in
   the reproducibility requirements.
+- Specify the gzip header OS identifier as the fixed value 255 (unknown).
+
+### Added
+
+- Compare a fixed archive fixture's checksum across all CI target platforms.
 
 ## 0.2.0 - 2026-10-04
 

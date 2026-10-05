@@ -37,6 +37,25 @@ fn repeated_archives_ignore_mtime_and_filesystem_order() {
 }
 
 #[test]
+fn fixed_fixture_archive_checksum() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("nested")).unwrap();
+    fs::write(source.join("alpha.txt"), b"dtar cross-target fixture\n").unwrap();
+    fs::write(source.join("nested/omega.txt"), b"stable bytes\n").unwrap();
+    let output = directory.path().join("result.tar.gz");
+
+    let stats = dtar::compress_directory(&source, &output, false).unwrap();
+    let bytes = fs::read(output).unwrap();
+    let checksum = format!("{:x}", Sha256::digest(bytes));
+    assert_eq!(stats.sha256, checksum);
+
+    if let Some(checksum_path) = std::env::var_os("DTAR_CROSS_TARGET_HASH_FILE") {
+        fs::write(checksum_path, format!("{checksum}\n")).unwrap();
+    }
+}
+
+#[test]
 fn archive_entries_have_normalized_order_and_metadata() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");

@@ -85,7 +85,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Run tests
+        env:
+          DTAR_CROSS_TARGET_HASH_FILE: cross-target.sha256
         run: cargo test --locked --target ${{ matrix.target }}
+      - name: Upload cross-target checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: cross-target-archive-${{ matrix.target }}
+          path: cross-target.sha256
+          if-no-files-found: error
+          retention-days: 1
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package Unix binary
@@ -102,9 +111,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  compare-determinism:
+    name: Compare cross-target archive checksums
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download cross-target checksums
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cross-target-archive-*
+          path: checksums
+      - name: Verify identical archive bytes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checksums = sorted(Path("checksums").glob("cross-target-archive-*/cross-target.sha256"))
+          if len(checksums) != 6:
+              raise SystemExit(f"expected checksums from 6 targets, got {len(checksums)}")
+
+          values = {path.parent.name: path.read_text().strip() for path in checksums}
+          for target, checksum in values.items():
+              print(f"{target}: {checksum}")
+          if len(set(values.values())) != 1:
+              raise SystemExit("archive checksums differ across targets")
+          PY
+
   release:
     name: Publish release
-    needs: build
+    needs: compare-determinism
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
