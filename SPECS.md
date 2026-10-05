@@ -30,7 +30,13 @@ The implementation must use the following standard Rust crates:
 
 ### Tar Header Sanitization
 
-The agent must construct a fresh GNU or USTAR tar header for every entry and overwrite all volatile metadata field variables with static, hardcoded constants:
+The agent must write a fresh PAX extended header for every entry, followed by
+a USTAR header. The PAX header must contain the normalized archive path and
+static values for mtime, uid, gid, uname, and gname. The USTAR header must
+contain the same static metadata and the normalized file mode. Use a fixed,
+valid placeholder path in the USTAR header because the PAX path record is
+authoritative and may exceed USTAR path limits.
+
 - Modification Time (mtime): Must be hardcoded to 0 (representing the Unix Epoch: January 1, 1970, 00:00:00 UTC).
 - User ID (uid) & Group ID (gid): Must be hardcoded to 0.
 - User Name & Group Name: Must be cleared or left empty.
@@ -52,10 +58,11 @@ The agent must construct a fresh GNU or USTAR tar header for every entry and ove
 3. Collect Entries: For each file or directory source, recursively collect supported entries. A single directory source uses paths relative to its contents; otherwise, put each source under its basename. Convert archive paths to forward slashes.
 4. Sort Entries: Sort the list of collected entries lexicographically based on their normalized relative path.
 5. Write with Clean Headers: Iteratively process each entry:
-	1. Initialize a clean tar::Header::new_gnu().
-	2. Apply static configurations (mtime = 0, uid = 0, gid = 0, fixed mode).
-	3. Set the exact file size payload attribute.
-	4. Append the structured header and file data payload to the archive stream.
+	1. Append a PAX extended header with the normalized path and fixed metadata.
+	2. Initialize a clean tar::Header::new_ustar() for the entry.
+	3. Apply static configurations (mtime = 0, uid = 0, gid = 0, fixed mode).
+	4. Set the exact file size payload attribute and a fixed placeholder path.
+	5. Append the USTAR header and file data payload to the archive stream.
 6. Flush and Finalize: Explicitly invoke the teardown methods for the tar container structure (archive.into_inner()?) and flush the compression stream buffer completely (encoder.finish()?) to guarantee data integrity.
 7. Publish Output: Flush and synchronize the completed temporary archive, calculate its checksum, then publish it at the requested output path. Publish without replacing an existing file by default; `--force` must atomically replace it.
 

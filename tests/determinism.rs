@@ -64,7 +64,31 @@ fn archive_entries_have_normalized_order_and_metadata() {
         .map(|entry| {
             let mut entry = entry.unwrap();
             let path = entry.path().unwrap().to_string_lossy().into_owned();
+            let pax_metadata = entry
+                .pax_extensions()
+                .unwrap()
+                .expect("each entry should have PAX metadata")
+                .map(|extension| {
+                    let extension = extension.unwrap();
+                    (
+                        extension.key().unwrap().to_owned(),
+                        extension.value().unwrap().to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                pax_metadata,
+                [
+                    ("path".to_owned(), path.clone()),
+                    ("mtime".to_owned(), "0".to_owned()),
+                    ("uid".to_owned(), "0".to_owned()),
+                    ("gid".to_owned(), "0".to_owned()),
+                    ("uname".to_owned(), String::new()),
+                    ("gname".to_owned(), String::new()),
+                ]
+            );
             let header = entry.header();
+            assert_eq!(&header.as_bytes()[257..263], b"ustar\0");
             assert_eq!(header.mtime().unwrap(), 0);
             assert_eq!(header.uid().unwrap(), 0);
             assert_eq!(header.gid().unwrap(), 0);
@@ -89,6 +113,47 @@ fn archive_entries_have_normalized_order_and_metadata() {
             .collect::<Vec<_>>(),
         ["a-dir", "a-dir/a.txt", "z-dir", "z-dir/z.txt"]
     );
+}
+
+#[test]
+fn pax_headers_preserve_long_archive_paths() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    let mut nested = source.clone();
+    for _ in 0..4 {
+        nested = nested.join("a".repeat(80));
+    }
+    fs::create_dir_all(&nested).unwrap();
+    let file = nested.join("file.txt");
+    fs::write(&file, b"long path").unwrap();
+    let output = directory.path().join("result.tar.gz");
+
+    dtar::compress_directory(&source, &output, false).unwrap();
+
+    let expected_path = format!(
+        "{}/{}/{}/{}/file.txt",
+        "a".repeat(80),
+        "a".repeat(80),
+        "a".repeat(80),
+        "a".repeat(80)
+    );
+    assert!(expected_path.len() > 255);
+
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert!(paths.contains(&expected_path));
 }
 
 #[cfg(unix)]

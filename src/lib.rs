@@ -244,7 +244,18 @@ where
     archive.mode(tar::HeaderMode::Deterministic);
 
     for (index, entry) in entries.iter().enumerate() {
-        let mut header = Header::new_gnu();
+        archive
+            .append_pax_extensions([
+                ("path", entry.archive_path.as_bytes()),
+                ("mtime", b"0"),
+                ("uid", b"0"),
+                ("gid", b"0"),
+                ("uname", b""),
+                ("gname", b""),
+            ])
+            .with_context(|| format!("cannot write PAX metadata for {}", entry.archive_path))?;
+
+        let mut header = Header::new_ustar();
         header.set_mtime(0);
         header.set_uid(0);
         header.set_gid(0);
@@ -252,13 +263,13 @@ where
         header.set_groupname("")?;
         header.set_mode(entry.mode);
         header.set_size(entry.size);
+        header
+            .set_path("PaxEntry")
+            .context("cannot set USTAR placeholder path")?;
         header.set_entry_type(match entry.kind {
             ArchiveEntryKind::File => EntryType::Regular,
             ArchiveEntryKind::Directory => EntryType::Directory,
         });
-        header.set_path(&entry.archive_path).with_context(|| {
-            format!("archive path cannot be represented: {}", entry.archive_path)
-        })?;
         header.set_cksum();
 
         match entry.kind {

@@ -6,6 +6,8 @@
 
 - Upgrade GitHub Actions checkout and artifact actions to their latest major
   versions.
+- Use deterministic PAX extended headers for archive paths and metadata,
+  followed by USTAR entry headers.
 
 ## 0.2.0 - 2026-10-04
 

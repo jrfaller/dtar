@@ -47,7 +47,9 @@ regular files use `0o644`. On filesystems that do not expose executable status,
 regular files use `0o644`. It also normalizes gzip header fields and uses the
 Rust DEFLATE backend with a fixed best-compression profile. Given the same
 inputs, `dtar` version, and options, repeated runs produce the same archive
-bytes and SHA-256 checksum.
+bytes and SHA-256 checksum. Each entry uses a PAX extended header for its path
+and normalized metadata, followed by a USTAR header for standard entry fields;
+this supports archive paths longer than the USTAR path fields allow.
 
 `dtar` archives regular files and directories. Symbolic links and other
 special filesystem entries are rejected rather than followed. Archive paths
