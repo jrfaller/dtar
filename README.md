@@ -147,7 +147,9 @@ Patterns without `/` match files or directories with that name at any depth,
 so `.DS_Store` excludes nested matches. Patterns containing `/` are relative to
 the archive root. `*` and `?` do not match `/`; use `**` to match across
 directory levels. When a directory matches, it and its entire subtree are
-omitted. Nothing is excluded by default.
+omitted. A trailing `/` restricts a pattern to directories, so `build/` omits
+directories named `build` but keeps a file with that name. Nothing is excluded
+by default.
 
 ```sh
 dtar ./my-project \

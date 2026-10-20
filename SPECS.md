@@ -156,7 +156,7 @@ separators. A pattern without `/` matches a path component at any depth; a
 pattern containing `/` is relative to the archive root. `*` and `?` do not
 match `/`; `**` may match across directory separators. An excluded directory
 and its descendants must be omitted; there are no implicit exclusions.
-Invalid patterns must produce an error rather than being ignored.
+A trailing `/` restricts a pattern to directories: `build/` omits directories named `build` but keeps files with that name. Invalid patterns must produce an error rather than being ignored.
 
 The CLI must also accept `--exclude-os-artifacts`, which adds these patterns to
 the user-supplied exclusions: `.DS_Store`, `._*`, `.Spotlight-V100`,

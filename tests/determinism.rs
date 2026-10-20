@@ -839,6 +839,50 @@ fn exclude_patterns_skip_files_and_prune_directories() {
 }
 
 #[test]
+fn trailing_slash_excludes_only_directories() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("build")).unwrap();
+    fs::create_dir_all(source.join("nested/build")).unwrap();
+    fs::create_dir_all(source.join("tools")).unwrap();
+    fs::write(source.join("build/out.o"), b"ignored").unwrap();
+    fs::write(source.join("nested/build/out.o"), b"ignored").unwrap();
+    fs::write(source.join("build.txt"), b"kept").unwrap();
+    fs::write(source.join("tools/build"), b"kept").unwrap();
+    let output = directory.path().join("filtered.tar.gz");
+    let excludes = vec!["build/".to_owned()];
+
+    let stats = dtar::compress_directory_with_excludes(&source, &output, false, &excludes).unwrap();
+
+    assert_eq!(stats.files, 2);
+    assert_eq!(stats.directories, 2);
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["build.txt", "nested", "tools", "tools/build"]);
+
+    let error = dtar::compress_directory_with_excludes(
+        &source,
+        directory.path().join("invalid.tar.gz"),
+        false,
+        &["build//".to_owned()],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("must name a path"));
+}
+
+#[test]
 fn exclude_patterns_use_gitignore_style_path_matching() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");

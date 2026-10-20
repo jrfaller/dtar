@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- A trailing `/` in `--exclude` patterns now matches only directories, so
+  `build/` omits directories named `build`. Previously these patterns matched
+  nothing and were silently ignored.
+- Reject exclude patterns that end with more than one `/`.
+
 ## 0.3.0 - 2026-10-05
 
 ### Changed

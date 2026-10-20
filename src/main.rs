@@ -53,7 +53,7 @@ struct Args {
     #[arg(long)]
     checksum: bool,
 
-    /// Exclude paths matching this glob; slashless patterns match at any depth
+    /// Exclude paths matching this glob; slashless patterns match at any depth and a trailing / matches directories only
     #[arg(short, long, value_name = "PATTERN")]
     exclude: Vec<String>,
 

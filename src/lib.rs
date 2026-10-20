@@ -31,6 +31,21 @@ struct SourceInput {
     is_directory: bool,
 }
 
+struct Excludes {
+    any_entry: GlobSet,
+    directory_only: GlobSet,
+}
+
+impl Excludes {
+    fn matches_entry(&self, path: &str) -> bool {
+        self.any_entry.is_match(path)
+    }
+
+    fn matches_directory(&self, path: &str) -> bool {
+        self.any_entry.is_match(path) || self.directory_only.is_match(path)
+    }
+}
+
 /// The kind of an entry in an archive plan.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArchiveEntryKind {
@@ -332,8 +347,9 @@ where
     })
 }
 
-fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
-    let mut builder = GlobSetBuilder::new();
+fn build_excludes(patterns: &[String]) -> Result<Excludes> {
+    let mut any_entry = GlobSetBuilder::new();
+    let mut directory_only = GlobSetBuilder::new();
     for pattern in patterns {
         if pattern.is_empty() {
             bail!("exclude pattern must not be empty");
@@ -346,18 +362,37 @@ fn build_excludes(patterns: &[String]) -> Result<GlobSet> {
             bail!("exclude patterns must be archive-relative and use '/' separators: {pattern:?}");
         }
 
-        let glob_pattern = if pattern.contains('/') {
-            pattern.clone()
+        let (path_pattern, is_directory_only) = match pattern.strip_suffix('/') {
+            Some(stripped) => (stripped, true),
+            None => (pattern.as_str(), false),
+        };
+        if path_pattern.is_empty() || path_pattern.ends_with('/') {
+            bail!("exclude pattern must name a path: {pattern:?}");
+        }
+
+        let glob_pattern = if path_pattern.contains('/') {
+            path_pattern.to_owned()
         } else {
-            format!("**/{pattern}")
+            format!("**/{path_pattern}")
         };
         let glob = GlobBuilder::new(&glob_pattern)
             .literal_separator(true)
             .build()
             .with_context(|| format!("invalid exclude pattern {pattern:?}"))?;
-        builder.add(glob);
+        if is_directory_only {
+            directory_only.add(glob);
+        } else {
+            any_entry.add(glob);
+        }
     }
-    builder.build().context("cannot compile exclude patterns")
+    Ok(Excludes {
+        any_entry: any_entry
+            .build()
+            .context("cannot compile exclude patterns")?,
+        directory_only: directory_only
+            .build()
+            .context("cannot compile exclude patterns")?,
+    })
 }
 
 /// Plans an archive without creating or modifying the destination file.
@@ -439,7 +474,7 @@ pub fn plan_sources(
             )?);
         } else {
             let archive_path = source_basename(&source.path)?;
-            if !excludes.is_match(&archive_path) {
+            if !excludes.matches_entry(&archive_path) {
                 let metadata = fs::metadata(&source.path)
                     .with_context(|| format!("cannot inspect {}", source.path.display()))?;
                 entries.push(Entry {
@@ -511,11 +546,11 @@ fn source_basename(source: &Path) -> Result<String> {
 fn collect_directory_entries(
     root: &Path,
     archive_prefix: Option<&str>,
-    excludes: &GlobSet,
+    excludes: &Excludes,
 ) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
     if let Some(archive_path) = archive_prefix {
-        if excludes.is_match(archive_path) {
+        if excludes.matches_directory(archive_path) {
             return Ok(entries);
         }
         entries.push(Entry {
@@ -547,7 +582,7 @@ fn collect_directory_entries(
                 |prefix| format!("{prefix}/{archive_relative_path}"),
             );
 
-            if excludes.is_match(&archive_path) {
+            if excludes.matches_entry(&archive_path) {
                 continue;
             }
             let metadata = fs::symlink_metadata(&path)
@@ -556,6 +591,9 @@ fn collect_directory_entries(
                 bail!("symbolic links are not supported: {}", path.display());
             }
             if metadata.is_dir() {
+                if excludes.matches_directory(&archive_path) {
+                    continue;
+                }
                 entries.push(Entry {
                     source: path.clone(),
                     archive_path,
