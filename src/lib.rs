@@ -298,7 +298,7 @@ where
                 .append(&header, io::empty())
                 .with_context(|| format!("cannot archive directory {}", entry.archive_path))?,
             ArchiveEntryKind::File => {
-                let mut file = File::open(&entry.source)
+                let file = File::open(&entry.source)
                     .with_context(|| format!("cannot read {}", entry.source.display()))?;
                 let metadata = file
                     .metadata()
@@ -306,9 +306,7 @@ where
                 if !metadata.is_file() || metadata.len() != entry.size {
                     bail!("source changed while archiving: {}", entry.source.display());
                 }
-                archive
-                    .append(&header, &mut file)
-                    .with_context(|| format!("cannot archive file {}", entry.archive_path))?;
+                append_file_entry(&mut archive, &header, file, entry)?;
             }
         }
         progress(index as u64 + 1, total);
@@ -626,6 +624,34 @@ fn collect_directory_entries(
 }
 
 #[cfg(unix)]
+/// Appends a regular file entry, failing if its content length differs from `entry.size`.
+/// `Builder::append` copies until EOF and ignores the header size, so the reader is capped
+/// at the planned size and any extra byte is detected afterwards.
+fn append_file_entry<W: Write, R: Read>(
+    archive: &mut Builder<W>,
+    header: &Header,
+    mut reader: R,
+    entry: &Entry,
+) -> Result<()> {
+    let changed = || format!("source changed while archiving: {}", entry.source.display());
+    let mut limited = (&mut reader).take(entry.size);
+    archive
+        .append(header, &mut limited)
+        .with_context(|| format!("cannot archive file {}", entry.archive_path))?;
+    if limited.limit() != 0 {
+        bail!(changed());
+    }
+    let mut probe = [0_u8; 1];
+    if reader
+        .read(&mut probe)
+        .with_context(|| format!("cannot read {}", entry.source.display()))?
+        != 0
+    {
+        bail!(changed());
+    }
+    Ok(())
+}
+
 fn normalized_file_mode(metadata: &fs::Metadata) -> u32 {
     if metadata.permissions().mode() & 0o111 != 0 {
         0o755
@@ -688,4 +714,51 @@ fn sha256(file: &mut File) -> Result<String> {
         hasher.update(&buffer[..read]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file_entry(size: u64) -> Entry {
+        Entry {
+            source: PathBuf::from("data.bin"),
+            archive_path: "data.bin".to_string(),
+            kind: ArchiveEntryKind::File,
+            mode: 0o644,
+            size,
+        }
+    }
+
+    fn append(content: &[u8], size: u64) -> Result<Vec<u8>> {
+        let entry = file_entry(size);
+        let mut header = Header::new_ustar();
+        header.set_size(size);
+        header.set_entry_type(EntryType::Regular);
+        header.set_cksum();
+        let mut archive = Builder::new(Vec::new());
+        append_file_entry(&mut archive, &header, content, &entry)?;
+        Ok(archive.into_inner()?)
+    }
+
+    #[test]
+    fn accepts_content_matching_planned_size() {
+        assert!(append(b"hello", 5).is_ok());
+    }
+
+    #[test]
+    fn rejects_file_that_shrank_after_size_check() {
+        let error = append(b"hel", 5).unwrap_err();
+        assert!(error
+            .to_string()
+            .starts_with("source changed while archiving"));
+    }
+
+    #[test]
+    fn rejects_file_that_grew_after_size_check() {
+        let error = append(b"hello world", 5).unwrap_err();
+        assert!(error
+            .to_string()
+            .starts_with("source changed while archiving"));
+    }
 }

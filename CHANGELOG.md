@@ -16,6 +16,8 @@
 - `dtar .` no longer fails with an output-inside-source error. The default
   archive name is derived from the canonicalized source, so it is written
   beside the directory (for example `project.tar.gz`).
+- Archiving fails with `source changed while archiving` when a file grows or
+  shrinks after its size is checked, instead of writing a corrupt tar archive.
 
 ## 0.3.0 - 2026-10-05
 
