@@ -8,6 +8,10 @@
   `build/` omits directories named `build`. Previously these patterns matched
   nothing and were silently ignored.
 - Reject exclude patterns that end with more than one `/`.
+- Reject exclude patterns where `**` is not a whole path segment (for example
+  `a**b`), which previously behaved like `*` without warning.
+- Document exclusion semantics in the spec and README: trailing `/` handling,
+  root-relative patterns, and `dir/**` matching contents but not `dir` itself.
 
 ### Fixed
 

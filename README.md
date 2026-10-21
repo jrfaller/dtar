@@ -143,13 +143,16 @@ On macOS, use `shasum -a 256 -c SHA256SUMS` instead.
 ### `-e, --exclude <PATTERN>`
 
 Exclude archive-relative paths matching a glob. This option can be repeated.
-Patterns without `/` match files or directories with that name at any depth,
-so `.DS_Store` excludes nested matches. Patterns containing `/` are relative to
-the archive root. `*` and `?` do not match `/`; use `**` to match across
-directory levels. When a directory matches, it and its entire subtree are
-omitted. A trailing `/` restricts a pattern to directories, so `build/` omits
-directories named `build` but keeps a file with that name. Nothing is excluded
-by default.
+A trailing `/` restricts a pattern to directories and is removed before the
+rest of the pattern is interpreted, so `build/` omits directories named `build`
+at any depth but keeps a file with that name. Patterns without `/` match
+entries with that name at any depth, so `.DS_Store` excludes nested matches.
+Patterns containing `/` are relative to the archive root, so `docs/build/`
+matches only that directory. `*` and `?` do not match `/`. `**` must be a whole
+path segment (`**/x`, `x/**`) and matches across directory levels; other uses,
+such as `a**b`, are errors. When a directory matches, it and its entire subtree
+are omitted. `dir/**` removes the contents of `dir` but leaves an empty `dir`;
+use `dir` to omit the directory itself. Nothing is excluded by default.
 
 ```sh
 dtar ./my-project \

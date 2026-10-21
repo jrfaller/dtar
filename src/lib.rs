@@ -373,6 +373,12 @@ fn build_excludes(patterns: &[String]) -> Result<Excludes> {
         if path_pattern.is_empty() || path_pattern.ends_with('/') {
             bail!("exclude pattern must name a path: {pattern:?}");
         }
+        if path_pattern
+            .split('/')
+            .any(|component| component != "**" && component.contains("**"))
+        {
+            bail!("`**` must be a whole path segment in exclude pattern {pattern:?}");
+        }
 
         let glob_pattern = if path_pattern.contains('/') {
             path_pattern.to_owned()

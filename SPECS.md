@@ -152,11 +152,24 @@ without creating or replacing it.
 
 The CLI must accept repeatable `--exclude PATTERN` options. Patterns must be
 valid globs matched against normalized archive-relative paths using `/`
-separators. A pattern without `/` matches a path component at any depth; a
-pattern containing `/` is relative to the archive root. `*` and `?` do not
-match `/`; `**` may match across directory separators. An excluded directory
-and its descendants must be omitted; there are no implicit exclusions.
-A trailing `/` restricts a pattern to directories: `build/` omits directories named `build` but keeps files with that name. Invalid patterns must produce an error rather than being ignored.
+separators. Exclusion patterns are interpreted as follows:
+
+1. A trailing `/` marks the pattern as directory-only and is removed before the
+   remaining pattern is interpreted. Directory-only patterns never match files.
+   `build/` therefore omits directories named `build` at any depth and keeps
+   files with that name.
+2. After the optional trailing `/` is removed, a pattern without `/` matches an
+   entry name at any depth. A pattern containing `/` is relative to the archive
+   root, so `docs/build/` matches only `docs/build` directories.
+3. `*` and `?` never match `/`. `**` must be a whole path segment (`**` alone,
+   `**/`, or `/**`) and may match across directory separators; any other use of
+   `**`, such as `a**b`, is an error.
+4. A pattern matches the entry at its path. A matching directory is pruned
+   together with its descendants. `dir/**` matches the contents of `dir` but not
+   `dir` itself; use `dir` to omit the directory.
+5. There are no implicit exclusions.
+
+Invalid patterns must produce an error rather than being ignored.
 
 The CLI must also accept `--exclude-os-artifacts`, which adds these patterns to
 the user-supplied exclusions: `.DS_Store`, `._*`, `.Spotlight-V100`,

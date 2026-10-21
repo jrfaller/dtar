@@ -985,3 +985,40 @@ fn exclude_patterns_use_gitignore_style_path_matching() {
         ]
     );
 }
+
+#[test]
+fn double_star_must_be_a_whole_segment_and_matches_only_contents() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::create_dir_all(source.join("docs/sub")).unwrap();
+    fs::write(source.join("docs/sub/page.md"), b"ignored").unwrap();
+    fs::write(source.join("docsx"), b"kept").unwrap();
+
+    let error = dtar::compress_directory_with_excludes(
+        &source,
+        directory.path().join("invalid.tar.gz"),
+        false,
+        &["a**b".to_owned()],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("whole path segment"));
+
+    let output = directory.path().join("filtered.tar.gz");
+    dtar::compress_directory_with_excludes(&source, &output, false, &["docs/**".to_owned()])
+        .unwrap();
+    let decoder = GzDecoder::new(File::open(output).unwrap());
+    let mut archive = Archive::new(decoder);
+    let paths = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["docs", "docsx"]);
+}
