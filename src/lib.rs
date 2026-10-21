@@ -629,7 +629,6 @@ fn collect_directory_entries(
     Ok(entries)
 }
 
-#[cfg(unix)]
 /// Appends a regular file entry, failing if its content length differs from `entry.size`.
 /// `Builder::append` copies until EOF and ignores the header size, so the reader is capped
 /// at the planned size and any extra byte is detected afterwards.
@@ -658,6 +657,7 @@ fn append_file_entry<W: Write, R: Read>(
     Ok(())
 }
 
+#[cfg(unix)]
 fn normalized_file_mode(metadata: &fs::Metadata) -> u32 {
     if metadata.permissions().mode() & 0o111 != 0 {
         0o755
