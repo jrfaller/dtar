@@ -2,7 +2,7 @@
 
 use std::{
     collections::BTreeSet,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
     time::{Duration, Instant},
@@ -16,7 +16,6 @@ use flate2::{Compression, GzBuilder};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use sha2::{Digest, Sha256};
 use tar::{Builder, EntryType, Header};
-use tempfile::NamedTempFile;
 
 struct Entry {
     source: PathBuf,
@@ -248,7 +247,14 @@ where
     let parent = output
         .parent()
         .context("output archive has no parent directory")?;
-    let temporary = NamedTempFile::new_in(parent)
+    let temporary = tempfile::Builder::new()
+        .make_in(parent, |path| {
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(path)
+        })
         .with_context(|| format!("cannot create temporary archive in {}", parent.display()))?;
 
     let gzip = GzBuilder::new()

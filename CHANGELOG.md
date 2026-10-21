@@ -9,6 +9,11 @@
   nothing and were silently ignored.
 - Reject exclude patterns that end with more than one `/`.
 
+### Fixed
+
+- Archives and `SHA256SUMS` manifests are created with default file
+  permissions (respecting the umask) instead of owner-only `0600`.
+
 ## 0.3.0 - 2026-10-05
 
 ### Changed

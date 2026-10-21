@@ -413,6 +413,38 @@ fn cli_prints_compression_statistics() {
     assert!(stdout.contains("SHA-256:"));
 }
 
+#[cfg(unix)]
+#[test]
+fn archive_and_manifest_use_default_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("input");
+    fs::write(&source, b"permissions").unwrap();
+    let reference = directory.path().join("reference");
+    File::create(&reference).unwrap();
+    let archive = directory.path().join("result.tar.gz");
+    let manifest = directory.path().join("SHA256SUMS");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--checksum", "--output"])
+        .arg(&archive)
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let expected = fs::metadata(&reference).unwrap().permissions().mode() & 0o777;
+    for path in [&archive, &manifest] {
+        let mode = fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, expected, "unexpected mode for {}", path.display());
+    }
+}
+
 #[test]
 fn cli_writes_checksum_manifest_beside_archive() {
     let directory = tempdir().unwrap();

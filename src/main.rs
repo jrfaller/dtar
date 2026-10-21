@@ -11,7 +11,6 @@ use std::{
 use anyhow::Context;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
-use tempfile::NamedTempFile;
 
 const OS_ARTIFACT_EXCLUDES: &[&str] = &[
     ".DS_Store",
@@ -255,12 +254,20 @@ fn write_checksum_manifest(
     let parent = manifest
         .parent()
         .expect("resolved checksum manifest path has a parent");
-    let mut temporary = NamedTempFile::new_in(parent).with_context(|| {
-        format!(
-            "cannot create temporary checksum manifest in {}",
-            parent.display()
-        )
-    })?;
+    let mut temporary = tempfile::Builder::new()
+        .make_in(parent, |path| {
+            fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(path)
+        })
+        .with_context(|| {
+            format!(
+                "cannot create temporary checksum manifest in {}",
+                parent.display()
+            )
+        })?;
     writeln!(temporary, "{checksum}  {filename}")
         .with_context(|| format!("cannot write checksum manifest {}", manifest.display()))?;
     temporary.as_file().sync_all().with_context(|| {
