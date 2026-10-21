@@ -131,7 +131,8 @@ fn run() -> anyhow::Result<()> {
                 println!("Checksum manifest: {}", manifest.display());
             }
             let root_name = if args.sources.len() == 1 && args.sources[0].is_dir() {
-                args.sources[0]
+                fs::canonicalize(&args.sources[0])
+                    .unwrap_or_else(|_| args.sources[0].clone())
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "Archive".to_owned())
@@ -306,6 +307,8 @@ fn print_tree(node: &TreeNode, prefix: &str) {
 }
 
 fn default_output_path(source: &Path) -> PathBuf {
+    // Canonicalize so relative sources such as `.` or `..` yield a real name and parent.
+    let source = fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
     let name = source
         .file_name()
         .filter(|name| !name.is_empty())

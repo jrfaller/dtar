@@ -13,6 +13,9 @@
 
 - Archives and `SHA256SUMS` manifests are created with default file
   permissions (respecting the umask) instead of owner-only `0600`.
+- `dtar .` no longer fails with an output-inside-source error. The default
+  archive name is derived from the canonicalized source, so it is written
+  beside the directory (for example `project.tar.gz`).
 
 ## 0.3.0 - 2026-10-05
 

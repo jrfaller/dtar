@@ -825,6 +825,29 @@ fn cli_keeps_default_output_for_a_single_file() {
 }
 
 #[test]
+fn cli_default_output_for_current_directory_is_beside_it() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("project");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("file.txt"), b"content").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .current_dir(&source)
+        .arg("--quiet")
+        .arg(".")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "dtar failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(directory.path().join("project.tar.gz").is_file());
+    assert!(!source.join("archive.tar.gz").exists());
+}
+
+#[test]
 fn exclude_patterns_skip_files_and_prune_directories() {
     let directory = tempdir().unwrap();
     let source = directory.path().join("input");
