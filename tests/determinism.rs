@@ -512,6 +512,26 @@ fn checksum_manifest_collision_requires_force_and_dry_run_creates_nothing() {
 }
 
 #[test]
+fn checksum_manifest_cannot_replace_a_source_file() {
+    let directory = tempdir().unwrap();
+    let source = directory.path().join("SHA256SUMS");
+    fs::write(&source, b"precious input").unwrap();
+    let archive = directory.path().join("result.tar.gz");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dtar"))
+        .args(["--checksum", "--force", "--output"])
+        .arg(&archive)
+        .arg(&source)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("cannot replace source file"));
+    assert!(!archive.exists());
+    assert_eq!(fs::read(&source).unwrap(), b"precious input");
+}
+
+#[test]
 fn cli_requires_at_least_one_source() {
     let output = Command::new(env!("CARGO_BIN_EXE_dtar")).output().unwrap();
 

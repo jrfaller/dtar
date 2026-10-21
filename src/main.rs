@@ -112,6 +112,7 @@ fn run() -> anyhow::Result<()> {
     let checksum_manifest = if args.checksum {
         Some(checksum_manifest_path(
             plan.as_ref().expect("checksum option plans the archive"),
+            &args.sources,
             args.force,
         )?)
     } else {
@@ -199,7 +200,11 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn checksum_manifest_path(plan: &dtar::ArchivePlan, overwrite: bool) -> anyhow::Result<PathBuf> {
+fn checksum_manifest_path(
+    plan: &dtar::ArchivePlan,
+    sources: &[PathBuf],
+    overwrite: bool,
+) -> anyhow::Result<PathBuf> {
     let output = plan.output_path();
     let filename = output
         .file_name()
@@ -219,6 +224,24 @@ fn checksum_manifest_path(plan: &dtar::ArchivePlan, overwrite: bool) -> anyhow::
         .parent()
         .expect("resolved archive path has a parent")
         .join("SHA256SUMS");
+    for source in sources {
+        let source = fs::canonicalize(source)
+            .with_context(|| format!("cannot resolve source {}", source.display()))?;
+        if fs::symlink_metadata(&source)?.is_dir() {
+            if manifest.starts_with(&source) {
+                anyhow::bail!(
+                    "checksum manifest must be outside source directory {}: {}",
+                    source.display(),
+                    manifest.display()
+                );
+            }
+        } else if manifest == source {
+            anyhow::bail!(
+                "checksum manifest cannot replace source file: {}",
+                manifest.display()
+            );
+        }
+    }
     match fs::symlink_metadata(&manifest) {
         Ok(metadata) if metadata.file_type().is_dir() => {
             anyhow::bail!(

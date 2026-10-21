@@ -113,7 +113,9 @@ archive's lowercase hexadecimal SHA-256 and its filename in standard
 `sha256sum` format. Do not write the manifest unless archive compression and
 publication succeed. If the manifest already exists, require `--force` before
 replacing it. The output archive may not itself be named `SHA256SUMS` when the
-option is enabled.
+option is enabled. The manifest follows the same safety rules as the archive:
+it must not be a file input (even one excluded by `--exclude`), and it must not
+lie inside a directory input. These checks run before any output is created.
 
 ### Completion Statistics
 

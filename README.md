@@ -126,7 +126,8 @@ Write a `SHA256SUMS` manifest beside the archive after successful compression.
 The manifest contains the archive's SHA-256 and filename, so it can be checked
 from the directory containing the manifest. If `SHA256SUMS` already exists,
 `--force` is required. With `--dry-run`, the manifest path is validated and
-shown but no files are created.
+shown but no files are created. The manifest is refused if it would replace an
+input file, including one excluded by `--exclude`.
 
 ```sh
 dtar ./my-project --output ./dist/my-project.tar.gz --checksum

@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Refuse `--checksum` when the `SHA256SUMS` manifest would replace a file
+  input, even with `--force`. Previously the manifest could overwrite such a
+  file and destroy its contents.
 - A trailing `/` in `--exclude` patterns now matches only directories, so
   `build/` omits directories named `build`. Previously these patterns matched
   nothing and were silently ignored.
