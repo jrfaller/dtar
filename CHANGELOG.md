@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-22
+
 ### Changed
 
 - Refuse `--checksum` when the `SHA256SUMS` manifest would replace a file
